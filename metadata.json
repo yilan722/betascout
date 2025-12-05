@@ -1,0 +1,5 @@
+{
+  "name": "AlphaScout - Market Bottom Detector",
+  "description": "A sophisticated market monitor tracking relationships between asset classes and detecting daily/weekly bottoms using dual-factor algorithms (RSI+ATR+BB and Aggregated Scores).",
+  "requestFramePermissions": []
+}

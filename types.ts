@@ -1,0 +1,53 @@
+export enum AssetCategory {
+  US_STOCKS = 'US Stocks',
+  CN_A_SHARES = 'China A-Shares',
+  HK_STOCKS = 'HK Stocks',
+  COMMODITIES = 'Commodities',
+  CRYPTO = 'Crypto',
+  FOREX = 'Forex',
+}
+
+export interface Asset {
+  id: string;
+  symbol: string;
+  name: string;
+  category: AssetCategory;
+  price: number;
+  change24h: number;
+}
+
+export interface Candle {
+  time: string; // ISO date
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface IndicatorData {
+  time: string;
+  price: number;
+  
+  // Indicator 1: RSI + ATR + EMA
+  rsi: number;
+  ema20: number;
+  atr: number;
+  lowerAtrBand: number; // EMA20 - 2.5 * ATR
+  upperAtrBand: number; // EMA20 + 2.5 * ATR
+  isOversold1: boolean; // RSI < 30 && Price < LowerATR
+  isOverbought1: boolean; // RSI > 70 && Price > UpperATR
+
+  // Indicator 2: Aggregated Scores
+  aggScore: number;
+  aggLowerBand: number;
+  aggUpperBand: number;
+  isOversold2: boolean; // Score < LowerBand
+  isOverbought2: boolean;
+  
+  // Combined Signals
+  buySignal: boolean; // Just entered oversold or confirmed bottom
+  strongBuySignal: boolean; // Both indicators oversold
+}
+
+export type Timeframe = '1D' | '1W';
