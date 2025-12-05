@@ -28,6 +28,10 @@ export interface Candle {
 export interface IndicatorData {
   time: string;
   price: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
   
   // Indicator 1: RSI + ATR + EMA
   rsi: number;

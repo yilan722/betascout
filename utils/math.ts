@@ -1,13 +1,17 @@
 // Simple utility for average
-export const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+export const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
 // Standard Deviation
 export const stdDev = (arr: number[]) => {
+  if (arr.length === 0) return 0;
   const mean = avg(arr);
   const squareDiffs = arr.map((value) => Math.pow(value - mean, 2));
   const avgSquareDiff = avg(squareDiffs);
   return Math.sqrt(avgSquareDiff);
 };
+
+// Sum
+export const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
 
 // Simple Moving Average
 export const calculateSMA = (data: number[], window: number): number[] => {
@@ -22,6 +26,20 @@ export const calculateSMA = (data: number[], window: number): number[] => {
   }
   return sma;
 };
+
+// Rolling Standard Deviation
+export const calculateRollingStdDev = (data: number[], window: number): number[] => {
+    const rollingStd = [];
+    for (let i = 0; i < data.length; i++) {
+        if (i < window - 1) {
+            rollingStd.push(NaN);
+            continue;
+        }
+        const slice = data.slice(i - window + 1, i + 1);
+        rollingStd.push(stdDev(slice));
+    }
+    return rollingStd;
+}
 
 // Exponential Moving Average
 export const calculateEMA = (data: number[], window: number): number[] => {

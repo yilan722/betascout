@@ -34,7 +34,7 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick, statu
           <p className="text-sm font-mono text-slate-200">${asset.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           <div className={`text-xs flex items-center justify-end gap-1 ${asset.change24h >= 0 ? 'text-green-500' : 'text-red-500'}`}>
             {asset.change24h >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-            {Math.abs(asset.change24h).toFixed(2)}%
+            {typeof asset.change24h === 'number' ? Math.abs(asset.change24h).toFixed(2) : '0.00'}%
           </div>
         </div>
       </div>
