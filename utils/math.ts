@@ -51,38 +51,64 @@ export const calculateEMA = (data: number[], window: number): number[] => {
   return ema;
 };
 
-// Relative Strength Index
+// Relative Strength Index (Wilder's Smoothing Method)
 export const calculateRSI = (data: number[], window: number = 14): number[] => {
-  let gains = 0;
-  let losses = 0;
-  const rsi = [];
-
-  // First calculation
-  for (let i = 1; i <= window; i++) {
-    const diff = data[i] - data[i - 1];
-    if (diff > 0) gains += diff;
-    else losses += Math.abs(diff);
+  if (data.length < window + 1) {
+    return new Array(data.length).fill(NaN);
   }
-  
-  let avgGain = gains / window;
-  let avgLoss = losses / window;
+
+  const rsi: number[] = [];
   
   // Fill initial NaNs
-  for (let i = 0; i < window; i++) rsi.push(NaN);
+  for (let i = 0; i < window; i++) {
+    rsi.push(NaN);
+  }
+
+  // Calculate initial average gain and loss
+  let sumGains = 0;
+  let sumLosses = 0;
   
-  rsi.push(100 - (100 / (1 + avgGain / (avgLoss === 0 ? 1 : avgLoss))));
+  for (let i = 1; i <= window; i++) {
+    const change = data[i] - data[i - 1];
+    if (change > 0) {
+      sumGains += change;
+    } else {
+      sumLosses += Math.abs(change);
+    }
+  }
+  
+  let avgGain = sumGains / window;
+  let avgLoss = sumLosses / window;
+  
+  // Calculate first RSI value
+  if (avgLoss === 0) {
+    // If no losses, RSI should be 100 (perfect upward movement)
+    rsi.push(100);
+  } else {
+    const rs = avgGain / avgLoss;
+    rsi.push(100 - (100 / (1 + rs)));
+  }
 
-  // Smoothed calculation
+  // Calculate remaining RSI values using Wilder's smoothing
   for (let i = window + 1; i < data.length; i++) {
-    const diff = data[i] - data[i - 1];
-    const gain = diff > 0 ? diff : 0;
-    const loss = diff < 0 ? Math.abs(diff) : 0;
+    const change = data[i] - data[i - 1];
+    const currentGain = change > 0 ? change : 0;
+    const currentLoss = change < 0 ? Math.abs(change) : 0;
 
-    avgGain = (avgGain * (window - 1) + gain) / window;
-    avgLoss = (avgLoss * (window - 1) + loss) / window;
+    // Wilder's smoothing: newAvg = (oldAvg * (n-1) + currentValue) / n
+    avgGain = (avgGain * (window - 1) + currentGain) / window;
+    avgLoss = (avgLoss * (window - 1) + currentLoss) / window;
 
-    const rs = avgGain / (avgLoss === 0 ? 1 : avgLoss);
-    rsi.push(100 - 100 / (1 + rs));
+    // Calculate RSI
+    if (avgLoss === 0) {
+      // If no losses, RSI should be 100
+      rsi.push(100);
+    } else {
+      const rs = avgGain / avgLoss;
+      const rsiValue = 100 - (100 / (1 + rs));
+      // Clamp RSI to valid range [0, 100]
+      rsi.push(Math.max(0, Math.min(100, rsiValue)));
+    }
   }
 
   return rsi;

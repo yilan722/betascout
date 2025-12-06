@@ -7,7 +7,8 @@ import AssetCard from './components/AssetCard';
 import { MainPriceChart, OscillatorChart } from './components/IndicatorChart';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SignalWatchPanel } from './components/SignalWatchPanel';
-import { Bell, Activity, Layers, Menu, X, Globe, DollarSign, Cpu, BarChart3, Eye } from 'lucide-react';
+import { Bell, Activity, Layers, Menu, X, Globe, DollarSign, Cpu, BarChart3, Eye, Languages } from 'lucide-react';
+import { useTranslation } from './i18n/useTranslation';
 
 // Icons map
 const CategoryIcons: Record<AssetCategory, React.ReactNode> = {
@@ -20,6 +21,7 @@ const CategoryIcons: Record<AssetCategory, React.ReactNode> = {
 };
 
 const App: React.FC = () => {
+  const { t, language, setLanguage } = useTranslation();
   const [selectedAssetId, setSelectedAssetId] = useState<string>(ASSETS_CONFIG[0].id);
   const [selectedCategory, setSelectedCategory] = useState<AssetCategory | 'ALL'>('ALL');
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -209,7 +211,13 @@ const App: React.FC = () => {
                     }`}
                     title={cat}
                 >
-                    {cat === 'ALL' ? 'All Mkts' : cat}
+                    {cat === 'ALL' ? t.nav.allMarkets : 
+                     cat === AssetCategory.US_STOCKS ? t.categories.usStocks :
+                     cat === AssetCategory.CN_A_SHARES ? t.categories.cnAShares :
+                     cat === AssetCategory.HK_STOCKS ? t.categories.hkStocks :
+                     cat === AssetCategory.CRYPTO ? t.categories.crypto :
+                     cat === AssetCategory.COMMODITIES ? t.categories.commodities :
+                     cat === AssetCategory.FOREX ? t.categories.forex : cat}
                 </button>
             ))}
         </div>
@@ -217,10 +225,10 @@ const App: React.FC = () => {
         {/* Asset List */}
         <div className="flex-1 overflow-y-auto">
             {isLoading ? (
-                <div className="p-4 text-center text-slate-500 text-sm">Loading market data...</div>
+                <div className="p-4 text-center text-slate-500 text-sm">{t.status.loadingMarketData}</div>
             ) : filteredAssets.length === 0 ? (
                 <div className="p-4 text-center">
-                    <p className="text-slate-500 text-sm mb-2">No assets loaded</p>
+                    <p className="text-slate-500 text-sm mb-2">{t.status.noAssetsLoaded}</p>
                     {error && (
                         <p className="text-red-400 text-xs">{error}</p>
                     )}
@@ -228,7 +236,7 @@ const App: React.FC = () => {
                         onClick={() => window.location.reload()} 
                         className="mt-2 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
                     >
-                        Retry
+                        {t.common.retry}
                     </button>
                 </div>
             ) : (
@@ -272,6 +280,18 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-6">
+                {/* Language Toggle */}
+                <div className="flex bg-slate-800 rounded-lg p-1">
+                    <button
+                        onClick={() => setLanguage(language === 'en' ? 'zh' : 'en')}
+                        className="px-3 py-1 text-xs font-bold rounded transition-colors flex items-center gap-1 text-slate-400 hover:text-white"
+                        title={language === 'en' ? '切换到中文' : 'Switch to English'}
+                    >
+                        <Languages size={14} />
+                        {language === 'en' ? '中文' : 'EN'}
+                    </button>
+                </div>
+
                 {/* View Mode Toggle */}
                 <div className="flex bg-slate-800 rounded-lg p-1">
                     <button 
@@ -283,7 +303,7 @@ const App: React.FC = () => {
                         }`}
                     >
                         <BarChart3 size={14} />
-                        Charts
+                        {t.nav.charts}
                     </button>
                     <button 
                         onClick={() => setViewMode('watch')}
@@ -294,7 +314,7 @@ const App: React.FC = () => {
                         }`}
                     >
                         <Eye size={14} />
-                        Watch Panel
+                        {t.nav.watchPanel}
                     </button>
                 </div>
 
@@ -306,7 +326,7 @@ const App: React.FC = () => {
                         : 'bg-emerald-900 text-emerald-400 border border-emerald-700'
                     }`}>
                         <Bell size={14} />
-                        {latestData.strongBuySignal ? "STRONG BOTTOM DETECTED" : "POTENTIAL ENTRY"}
+                        {latestData.strongBuySignal ? t.signals.strongBottomDetected : t.signals.potentialEntry}
                     </div>
                 )}
                 
@@ -319,7 +339,7 @@ const App: React.FC = () => {
                             : 'text-slate-400 hover:text-white'
                         }`}
                     >
-                        Daily
+                        {t.nav.daily}
                     </button>
                     <button 
                         onClick={() => setTimeframe('1W')}
@@ -329,7 +349,7 @@ const App: React.FC = () => {
                             : 'text-slate-400 hover:text-white'
                         }`}
                     >
-                        Weekly
+                        {t.nav.weekly}
                     </button>
                 </div>
             </div>
@@ -344,17 +364,49 @@ const App: React.FC = () => {
             {/* Alert Status Banner */}
             {latestData && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                     <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
+                     <div className={`bg-slate-800/50 border rounded-xl p-4 ${
+                        latestData.rsiLevel === 'extreme_overbought' ? 'border-red-500/50 bg-red-900/10' :
+                        latestData.rsiLevel === 'overbought' ? 'border-orange-500/50 bg-orange-900/10' :
+                        latestData.rsiLevel === 'extreme_oversold' ? 'border-green-500/50 bg-green-900/10' :
+                        latestData.rsiLevel === 'oversold' ? 'border-emerald-500/50 bg-emerald-900/10' :
+                        'border-slate-700'
+                     }`}>
                         <p className="text-slate-400 text-xs mb-1">Indicator 1 (RSI+ATR)</p>
                         <div className="flex items-center justify-between">
-                            <span className="text-2xl font-bold text-slate-200">
-                                {latestData.isOversold1 ? 'OVERSOLD' : latestData.isOverbought1 ? 'OVERBOUGHT' : 'NEUTRAL'}
+                            <span className={`text-2xl font-bold ${
+                                latestData.rsiLevel === 'extreme_overbought' ? 'text-red-400' :
+                                latestData.rsiLevel === 'overbought' ? 'text-orange-400' :
+                                latestData.rsiLevel === 'extreme_oversold' ? 'text-green-400' :
+                                latestData.rsiLevel === 'oversold' ? 'text-emerald-400' :
+                                'text-slate-200'
+                            }`}>
+                                {latestData.rsiLevel === 'extreme_overbought' ? (language === 'zh' ? '极端超买' : 'EXTREME OB') :
+                                 latestData.rsiLevel === 'overbought' ? t.charts.overbought :
+                                 latestData.rsiLevel === 'extreme_oversold' ? (language === 'zh' ? '极端超卖' : 'EXTREME OS') :
+                                 latestData.rsiLevel === 'oversold' ? t.charts.oversold :
+                                 t.charts.neutral}
                             </span>
-                            <div className={`h-3 w-3 rounded-full ${latestData.isOversold1 ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-slate-600'}`}></div>
+                            <div className={`h-3 w-3 rounded-full ${
+                                latestData.isOversold1 || latestData.rsiLevel === 'oversold' || latestData.rsiLevel === 'extreme_oversold' ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' :
+                                latestData.isOverbought1 || latestData.rsiLevel === 'overbought' || latestData.rsiLevel === 'extreme_overbought' ? 'bg-red-500 shadow-[0_0_10px_#ef4444]' :
+                                'bg-slate-600'
+                            }`}></div>
                         </div>
-                        <div className="mt-2 text-xs flex gap-2">
-                            <span className="bg-slate-900 px-2 py-0.5 rounded text-purple-400">RSI: {typeof latestData.rsi === 'number' ? latestData.rsi.toFixed(1) : 'N/A'}</span>
-                            <span className="bg-slate-900 px-2 py-0.5 rounded text-slate-400">Target &lt; 30</span>
+                        <div className="mt-2 text-xs flex gap-2 flex-wrap">
+                            <span className={`bg-slate-900 px-2 py-0.5 rounded font-bold ${
+                                latestData.rsiLevel === 'extreme_overbought' ? 'text-red-400' :
+                                latestData.rsiLevel === 'overbought' ? 'text-orange-400' :
+                                latestData.rsiLevel === 'extreme_oversold' ? 'text-green-400' :
+                                latestData.rsiLevel === 'oversold' ? 'text-emerald-400' :
+                                'text-purple-400'
+                            }`}>
+                                RSI {latestData.rsiTrend === 'up' ? '▲' : latestData.rsiTrend === 'down' ? '▼' : '—'} {typeof latestData.rsi === 'number' ? latestData.rsi.toFixed(1) : 'N/A'}
+                            </span>
+                            <span className="bg-slate-900 px-2 py-0.5 rounded text-slate-400">
+                                {latestData.rsiLevel === 'oversold' || latestData.rsiLevel === 'extreme_oversold' ? 'Target < 30' : 
+                                 latestData.rsiLevel === 'overbought' || latestData.rsiLevel === 'extreme_overbought' ? 'Target > 70' :
+                                 'Neutral'}
+                            </span>
                         </div>
                      </div>
 
@@ -362,13 +414,13 @@ const App: React.FC = () => {
                         <p className="text-slate-400 text-xs mb-1">Indicator 2 (Alpha Score)</p>
                         <div className="flex items-center justify-between">
                              <span className="text-2xl font-bold text-slate-200">
-                                {latestData.isOversold2 ? 'BOTTOM' : latestData.isOverbought2 ? 'TOP' : 'RANGE'}
+                                {latestData.isOversold2 ? t.charts.bottom : latestData.isOverbought2 ? t.charts.top : t.charts.range}
                             </span>
                             <div className={`h-3 w-3 rounded-full ${latestData.isOversold2 ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-slate-600'}`}></div>
                         </div>
                         <div className="mt-2 text-xs flex gap-2">
-                            <span className="bg-slate-900 px-2 py-0.5 rounded text-orange-400">Score: {typeof latestData.aggScore === 'number' ? latestData.aggScore.toFixed(1) : 'N/A'}</span>
-                            <span className="bg-slate-900 px-2 py-0.5 rounded text-slate-400">Band: {typeof latestData.aggLowerBand === 'number' ? latestData.aggLowerBand.toFixed(1) : 'N/A'}</span>
+                            <span className="bg-slate-900 px-2 py-0.5 rounded text-orange-400">{t.charts.score}: {typeof latestData.aggScore === 'number' ? latestData.aggScore.toFixed(1) : 'N/A'}</span>
+                            <span className="bg-slate-900 px-2 py-0.5 rounded text-slate-400">{t.charts.lowerBand}: {typeof latestData.aggLowerBand === 'number' ? latestData.aggLowerBand.toFixed(1) : 'N/A'}</span>
                         </div>
                      </div>
                 </div>
@@ -377,10 +429,10 @@ const App: React.FC = () => {
             {/* Charts */}
             {error ? (
                 <div className="flex flex-col items-center justify-center h-64 text-slate-300 bg-red-900/20 border border-red-800 rounded-lg p-6">
-                    <p className="text-red-400 font-bold mb-2">⚠️ Data Loading Failed</p>
+                    <p className="text-red-400 font-bold mb-2">{t.status.dataLoadingFailed}</p>
                     <p className="text-sm text-center mb-4">{error}</p>
                     <p className="text-xs text-slate-500 text-center">
-                        The app is trying to fetch real market data. If this persists, please check your internet connection or try again later.
+                        {t.status.checkConnection}
                     </p>
                 </div>
             ) : marketData ? (
@@ -391,30 +443,30 @@ const App: React.FC = () => {
                         
                         {/* Data Source Info */}
                         <div className="mt-4 p-3 border border-slate-800 rounded bg-slate-900/30 text-xs text-slate-400">
-                            <p className="font-bold text-slate-300 mb-1">📊 Data Source & Calculation:</p>
+                            <p className="font-bold text-slate-300 mb-1">📊 {t.dataSource.title}</p>
                             <ul className="list-disc list-inside space-y-1 text-[11px]">
-                                <li><strong className="text-green-400">K-Line Data:</strong> Real market data from {currentAsset?.category === AssetCategory.CRYPTO ? 'Binance API' : 'Yahoo Finance API'}</li>
-                                <li><strong className="text-blue-400">Indicator 1 (RSI/EMA/ATR):</strong> Calculated from real OHLC prices using standard technical analysis formulas</li>
-                                <li><strong className="text-purple-400">Indicator 2 (Alpha Extract):</strong> Calculated from real daily returns using Omega Ratio + Sortino Ratio (Pine Script implementation)</li>
-                                <li><strong className="text-slate-300">Data Points:</strong> {marketData.indicators.length} historical candles used for calculations</li>
+                                <li><strong className="text-green-400">{t.dataSource.klineData}</strong> {currentAsset?.category === AssetCategory.CRYPTO ? 'Binance API' : 'Yahoo Finance API'}</li>
+                                <li><strong className="text-blue-400">{t.dataSource.indicator1}</strong> {language === 'zh' ? '基于真实OHLC价格使用标准技术分析公式计算' : 'Calculated from real OHLC prices using standard technical analysis formulas'}</li>
+                                <li><strong className="text-purple-400">{t.dataSource.indicator2}</strong> {language === 'zh' ? '基于真实日收益率使用Omega比率+Sortino比率计算（Pine Script实现）' : 'Calculated from real daily returns using Omega Ratio + Sortino Ratio (Pine Script implementation)'}</li>
+                                <li><strong className="text-slate-300">{t.dataSource.dataPoints}</strong> {marketData.indicators.length} {language === 'zh' ? '个历史K线用于计算' : 'historical candles used for calculations'}</li>
                             </ul>
                         </div>
                     </div>
                 </ErrorBoundary>
             ) : (
                 <div className="flex items-center justify-center h-64 text-slate-500">
-                    {selectedAssetId ? "Loading real market data..." : "Select an asset to view analysis"}
+                    {selectedAssetId ? t.status.loadingRealData : t.status.selectAsset}
                 </div>
             )}
             
             <div className="mt-8 p-4 border border-slate-800 rounded bg-slate-900/30 text-xs text-slate-500">
-                <h4 className="font-bold text-slate-400 mb-2">How to read signals:</h4>
+                <h4 className="font-bold text-slate-400 mb-2">{t.instructions.title}</h4>
                 <ul className="list-disc list-inside space-y-1">
-                    <li><strong className="text-green-400">Indicator 1 (Oversold):</strong> Occurs when RSI &lt; 30 AND Price &lt; EMA20 - 2.5*ATR. Represents statistical extension.</li>
-                    <li><strong className="text-green-400">Indicator 2 (Bottom):</strong> Occurs when the Aggregated Score drops below the dynamic lower statistical band.</li>
-                    <li><strong className="text-green-400 border border-green-500 px-1 rounded">STRONG BOTTOM:</strong> Triggers when BOTH indicators signal simultaneously. High probability reversal zone.</li>
+                    <li><strong className="text-green-400">{t.instructions.indicator1Oversold}</strong> {language === 'zh' ? '当RSI < 30 且价格 < EMA20 - 2.5*ATR时触发。代表统计延伸。' : 'Occurs when RSI < 30 AND Price < EMA20 - 2.5*ATR. Represents statistical extension.'}</li>
+                    <li><strong className="text-green-400">{t.instructions.indicator2Bottom}</strong> {language === 'zh' ? '当综合评分跌破动态下统计带时触发。' : 'Occurs when the Aggregated Score drops below the dynamic lower statistical band.'}</li>
+                    <li><strong className="text-green-400 border border-green-500 px-1 rounded">{t.instructions.strongBottom}</strong> {language === 'zh' ? '当两个指标同时发出信号时触发。高概率反转区域。' : 'Triggers when BOTH indicators signal simultaneously. High probability reversal zone.'}</li>
                 </ul>
-                <p className="mt-4 italic opacity-50">Disclaimer: Market data provided by Yahoo Finance via proxy. Data may be delayed. Not for financial advice or real trading.</p>
+                <p className="mt-4 italic opacity-50">{t.instructions.disclaimer}</p>
             </div>
                 </>
             )}

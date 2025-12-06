@@ -3,6 +3,7 @@ import { Asset, IndicatorData } from '../types';
 import { analyzeAsset } from '../services/dataService';
 import { ASSETS_CONFIG } from '../services/dataService';
 import { AlertCircle, TrendingUp, TrendingDown, Clock, DollarSign } from 'lucide-react';
+import { useTranslation } from '../i18n/useTranslation';
 
 interface SignalEvent {
   assetId: string;
@@ -23,6 +24,7 @@ interface SignalWatchPanelProps {
 }
 
 export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe }) => {
+  const { t, language } = useTranslation();
   const [signals, setSignals] = useState<SignalEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<'1W' | '1M' | '3M'>('1W');
@@ -131,17 +133,21 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
 
   const groupedSignals = useMemo(() => {
     const groups: Record<string, SignalEvent[]> = {
-      'Strong Buy': signals.filter(s => s.signalType === 'strong_buy'),
-      'Buy': signals.filter(s => s.signalType === 'buy'),
-      'Sell': signals.filter(s => s.signalType === 'sell'),
-      'Overbought': signals.filter(s => s.signalType === 'overbought'),
+      [t.signals.strongBuy]: signals.filter(s => s.signalType === 'strong_buy'),
+      [t.signals.buy]: signals.filter(s => s.signalType === 'buy'),
+      [t.signals.sell]: signals.filter(s => s.signalType === 'sell'),
+      [t.signals.overbought]: signals.filter(s => s.signalType === 'overbought'),
     };
     return groups;
-  }, [signals]);
+  }, [signals, t]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric' 
+    });
   };
 
   const getSignalColor = (type: string) => {
@@ -171,7 +177,7 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
     return (
       <div className="w-full bg-slate-900/50 rounded-lg p-6 border border-slate-800">
         <div className="flex items-center justify-center h-32">
-          <div className="text-slate-400 text-sm">Loading signals...</div>
+          <div className="text-slate-400 text-sm">{t.common.loading}</div>
         </div>
       </div>
     );
@@ -191,7 +197,7 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <AlertCircle size={20} className="text-blue-400" />
-            Signal Watch Panel
+            {t.watchPanel.title}
           </h3>
           <div className="flex gap-2">
             <button
@@ -202,7 +208,7 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                   : 'bg-slate-800 text-slate-400 hover:text-white'
               }`}
             >
-              1 Week
+              {t.watchPanel.oneWeek}
             </button>
             <button
               onClick={() => setSelectedPeriod('1M')}
@@ -212,7 +218,7 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                   : 'bg-slate-800 text-slate-400 hover:text-white'
               }`}
             >
-              1 Month
+              {t.watchPanel.oneMonth}
             </button>
             <button
               onClick={() => setSelectedPeriod('3M')}
@@ -222,19 +228,19 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                   : 'bg-slate-800 text-slate-400 hover:text-white'
               }`}
             >
-              3 Months
+              {t.watchPanel.threeMonths}
             </button>
           </div>
         </div>
         <div className="text-xs text-slate-400">
-          Showing signals from the last {selectedPeriod === '1W' ? 'week' : selectedPeriod === '1M' ? 'month' : '3 months'} ({signals.length} total)
+          {t.watchPanel.showingSignals} {selectedPeriod === '1W' ? (language === 'zh' ? '1周' : 'week') : selectedPeriod === '1M' ? (language === 'zh' ? '1个月' : 'month') : (language === 'zh' ? '3个月' : '3 months')} ({signals.length} {t.watchPanel.total})
         </div>
       </div>
 
       <div className="p-4 space-y-4 max-h-[600px] overflow-y-auto">
         {signals.length === 0 ? (
           <div className="text-center py-8 text-slate-400 text-sm">
-            No signals found in the selected period
+            {t.watchPanel.noSignals}
           </div>
         ) : (
           Object.entries(groupedSignals).map(([groupName, groupSignals]) => {
@@ -266,7 +272,7 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                               <Clock size={12} />
                               <span>{formatDate(signal.signalDate)}</span>
                               <span className="text-slate-500 ml-1">
-                                ({signal.daysAgo === 0 ? 'Today' : signal.daysAgo === 1 ? '1 day ago' : `${signal.daysAgo} days ago`})
+                                ({signal.daysAgo === 0 ? t.common.today : signal.daysAgo === 1 ? t.common.dayAgo : `${signal.daysAgo} ${t.common.daysAgo}`})
                               </span>
                             </div>
                             <div className="flex items-center gap-1 text-slate-400">
@@ -280,12 +286,12 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                           <div className="flex gap-2 mt-2">
                             {signal.indicator1 && (
                               <span className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
-                                Indicator 1
+                                {t.watchPanel.indicator1}
                               </span>
                             )}
                             {signal.indicator2 && (
                               <span className="text-xs px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">
-                                Indicator 2
+                                {t.watchPanel.indicator2}
                               </span>
                             )}
                           </div>

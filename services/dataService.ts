@@ -87,9 +87,34 @@ export const analyzeAsset = async (assetId: string, timeframe: '1D' | '1W' = '1D
     throw new Error(`No data available for ${config.yahooSymbol}. Please check your internet connection or try again later.`);
   }
 
+  // Ensure data is sorted chronologically (oldest to newest)
+  candles.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+  // Verify data integrity
+  const firstDate = new Date(candles[0]?.time);
+  const lastDate = new Date(candles[candles.length - 1]?.time);
+  const firstPrice = candles[0]?.close;
+  const lastPrice = candles[candles.length - 1]?.close;
+  
+  // Check for data anomalies
+  const priceChanges = candles.slice(1).map((c, i) => {
+    const prevClose = candles[i]?.close;
+    return prevClose > 0 ? ((c.close - prevClose) / prevClose) * 100 : 0;
+  });
+  const avgChange = priceChanges.reduce((a, b) => a + b, 0) / priceChanges.length;
+  
   console.log(`📊 Calculating indicators for ${config.yahooSymbol} using ${candles.length} ${timeframe === '1W' ? 'weekly' : 'daily'} data points (directly from API)`);
-  console.log(`   Data range: ${candles[0]?.time} to ${candles[candles.length - 1]?.time}`);
-  console.log(`   Latest price: $${candles[candles.length - 1]?.close?.toFixed(2)}`);
+  console.log(`   📅 Data range: ${candles[0]?.time} ($${firstPrice?.toFixed(2)}) to ${candles[candles.length - 1]?.time} ($${lastPrice?.toFixed(2)})`);
+  console.log(`   💰 Price change: ${((lastPrice - firstPrice) / firstPrice * 100).toFixed(2)}% over period`);
+  console.log(`   📈 Average daily change: ${avgChange.toFixed(2)}%`);
+  
+  // Warn if data seems suspicious
+  if (isNaN(firstDate.getTime()) || isNaN(lastDate.getTime())) {
+    console.error(`   ❌ Invalid date range detected!`);
+  }
+  if (lastDate < firstDate) {
+    console.error(`   ❌ Data is in reverse chronological order!`);
+  }
 
   // Validate minimum data points for indicators
   const minDataPoints = timeframe === '1W' ? 50 : 200; // Weekly needs less, daily needs more
@@ -97,23 +122,68 @@ export const analyzeAsset = async (assetId: string, timeframe: '1D' | '1W' = '1D
     console.warn(`⚠️ Warning: Only ${candles.length} data points available, indicators may be incomplete. Recommended: ${minDataPoints}+ points.`);
   }
 
-  const closes = candles.map(c => c.close);
+  // Extract price arrays and validate
+  const closes = candles.map(c => {
+    const close = c.close;
+    if (isNaN(close) || close <= 0) {
+      console.warn(`   ⚠️ Invalid close price: ${close} at ${c.time}`);
+    }
+    return close;
+  });
   const highs = candles.map(c => c.high);
   const lows = candles.map(c => c.low);
+  
+  // Log sample prices for verification (first, middle, last)
+  if (candles.length >= 3) {
+    const midIndex = Math.floor(candles.length / 2);
+    console.log(`   🔍 Sample prices: Start=$${closes[0]?.toFixed(2)}, Mid=$${closes[midIndex]?.toFixed(2)}, End=$${closes[closes.length - 1]?.toFixed(2)}`);
+  }
 
   // 2. Calculate Indicators from REAL price data
   
   // --- Indicator 1: RSI + ATR + BB (Standard) ---
   // All calculations are based on REAL market data (OHLC prices from API)
   console.log(`   Calculating Indicator 1 (RSI + EMA20 + ATR) from real price data...`);
+  
+  // Validate price data before calculation
+  const validCloses = closes.filter((c, i) => {
+    if (isNaN(c) || c <= 0) {
+      console.warn(`   ⚠️ Invalid close price at index ${i}: ${c}`);
+      return false;
+    }
+    return true;
+  });
+  
+  if (validCloses.length < 15) {
+    console.error(`   ❌ Not enough valid price data: ${validCloses.length} points (need at least 15)`);
+    throw new Error('Insufficient price data for RSI calculation');
+  }
+  
   const rsi = calculateRSI(closes, 14);
   const ema20 = calculateEMA(closes, 20);
   const atr = calculateATR(highs, lows, closes, 14);
   
+  // Validate RSI results
+  const validRsi = rsi.filter(r => !isNaN(r) && r >= 0 && r <= 100);
+  const rsiStats = {
+    min: validRsi.length > 0 ? Math.min(...validRsi) : NaN,
+    max: validRsi.length > 0 ? Math.max(...validRsi) : NaN,
+    avg: validRsi.length > 0 ? validRsi.reduce((a, b) => a + b, 0) / validRsi.length : NaN,
+  };
+  
   const latestRsi = rsi[rsi.length - 1];
   const latestEma = ema20[ema20.length - 1];
   const latestAtr = atr[atr.length - 1];
+  
   console.log(`   ✅ Indicator 1 calculated: RSI=${latestRsi?.toFixed(1)}, EMA20=${latestEma?.toFixed(2)}, ATR=${latestAtr?.toFixed(2)}`);
+  console.log(`   📊 RSI Statistics: Min=${rsiStats.min?.toFixed(1)}, Max=${rsiStats.max?.toFixed(1)}, Avg=${rsiStats.avg?.toFixed(1)}`);
+  
+  // Warn if RSI seems abnormal
+  if (rsiStats.avg > 70) {
+    console.warn(`   ⚠️ RSI average is unusually high (${rsiStats.avg.toFixed(1)}), indicating possible data or calculation issue`);
+  } else if (rsiStats.avg < 30) {
+    console.warn(`   ⚠️ RSI average is unusually low (${rsiStats.avg.toFixed(1)}), indicating possible data or calculation issue`);
+  }
   
   // --- Indicator 2: Aggregated Scores Oscillator [Alpha Extract] ---
   // Implementation of the provided Pine Script logic
@@ -280,11 +350,43 @@ export const analyzeAsset = async (assetId: string, timeframe: '1D' | '1W' = '1D
     const curEma = ema20[i] || c.close;
     const curAtr = atr[i] || 0;
     
-    // Indicator 1 Logic (RSI + ATR)
+    // RSI thresholds (based on Pine Script)
+    const rsiUpperBandExt = 80; // Extreme overbought
+    const rsiUpperBand = 70; // Overbought
+    const rsiLowerBand = 30; // Oversold
+    const rsiLowerBandExt = 20; // Extreme oversold
+    
+    // Determine RSI level
+    let rsiLevel: 'extreme_oversold' | 'oversold' | 'neutral' | 'overbought' | 'extreme_overbought' = 'neutral';
+    if (curRsi <= rsiLowerBandExt) {
+      rsiLevel = 'extreme_oversold';
+    } else if (curRsi <= rsiLowerBand) {
+      rsiLevel = 'oversold';
+    } else if (curRsi >= rsiUpperBandExt) {
+      rsiLevel = 'extreme_overbought';
+    } else if (curRsi >= rsiUpperBand) {
+      rsiLevel = 'overbought';
+    }
+    
+    // Determine RSI trend (momentum)
+    const prevRsi = rsi[i - 1] || curRsi;
+    const prev2Rsi = rsi[i - 2] || prevRsi;
+    let rsiTrend: 'up' | 'down' | 'neutral' = 'neutral';
+    if (curRsi > prevRsi && prevRsi > prev2Rsi) {
+      rsiTrend = 'up';
+    } else if (curRsi < prevRsi && prevRsi < prev2Rsi) {
+      rsiTrend = 'down';
+    }
+    
+    // Indicator 1 Logic (RSI + ATR) - Enhanced with multiple levels
     const lowerAtrBand = curEma - (2.5 * curAtr);
     const upperAtrBand = curEma + (2.5 * curAtr);
-    const isOversold1 = curRsi < 30 && c.close < lowerAtrBand;
-    const isOverbought1 = curRsi > 70 && c.close > upperAtrBand;
+    // Original logic: RSI < 30 && Price < LowerATR for oversold
+    // Enhanced: Also check extreme levels
+    const isOversold1 = (curRsi <= rsiLowerBand && c.close < lowerAtrBand) || 
+                        (curRsi <= rsiLowerBandExt && c.close < lowerAtrBand);
+    const isOverbought1 = (curRsi >= rsiUpperBand && c.close > upperAtrBand) || 
+                           (curRsi >= rsiUpperBandExt && c.close > upperAtrBand);
 
     // Indicator 2 Logic (Alpha Extract)
     const curScore = aggScores[i];
@@ -309,6 +411,8 @@ export const analyzeAsset = async (assetId: string, timeframe: '1D' | '1W' = '1D
       upperAtrBand,
       isOversold1,
       isOverbought1,
+      rsiLevel,
+      rsiTrend,
       aggScore: isNaN(curScore) ? 0 : curScore,
       aggLowerBand: isNaN(curAggLower) ? 0 : curAggLower,
       aggUpperBand: isNaN(curAggUpper) ? 0 : curAggUpper,

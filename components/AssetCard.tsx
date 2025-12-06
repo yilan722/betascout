@@ -1,6 +1,7 @@
 import React from 'react';
 import { Asset } from '../types';
 import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useTranslation } from '../i18n/useTranslation';
 
 interface AssetCardProps {
   asset: Asset;
@@ -10,6 +11,7 @@ interface AssetCardProps {
 }
 
 const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick, status }) => {
+  const { t } = useTranslation();
   return (
     <div
       onClick={onClick}
@@ -43,21 +45,21 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick, statu
       <div className="mt-2 flex items-center gap-2">
          {status === 'strong_buy' && (
              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-green-900/50 text-green-400 border border-green-700/50 flex items-center gap-1">
-                 <CheckCircle2 size={10} /> STRONG BOTTOM
+                 <CheckCircle2 size={10} /> {t.signals.strongBuy}
              </span>
          )}
          {status === 'buy' && (
              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-900/40 text-emerald-400 border border-emerald-800/50">
-                 BUY SIGNAL
+                 {t.signals.buy}
              </span>
          )}
          {status === 'sell' && (
              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-900/40 text-red-400 border border-red-800/50">
-                 SELL SIGNAL
+                 {t.signals.sell}
              </span>
          )}
          {status === 'neutral' && (
-             <span className="text-[10px] text-slate-600">Neutral</span>
+             <span className="text-[10px] text-slate-600">{t.charts.neutral}</span>
          )}
       </div>
     </div>

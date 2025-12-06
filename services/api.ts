@@ -149,7 +149,18 @@ const fetchFromBinance = async (symbol: string, interval: '1d' | '1w' = '1d'): P
       throw new Error('No valid data returned from Binance');
     }
     
+    // Sort by time (oldest first) - Binance returns data in reverse chronological order
+    candles.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+    
+    // Log data range for verification
+    const firstDate = candles[0]?.time;
+    const lastDate = candles[candles.length - 1]?.time;
+    const firstPrice = candles[0]?.close;
+    const lastPrice = candles[candles.length - 1]?.close;
+    
     console.log(`✅ Binance API: Successfully fetched ${candles.length} candles for ${symbol} (${binanceSymbol})`);
+    console.log(`   📅 Data range: ${firstDate} ($${firstPrice?.toFixed(2)}) to ${lastDate} ($${lastPrice?.toFixed(2)})`);
+    
     return candles;
   } catch (error: any) {
     console.error(`❌ Binance API fetch failed for ${symbol}:`, error);
@@ -257,7 +268,17 @@ export const fetchCandles = async (symbol: string, timeframe: '1D' | '1W' = '1D'
           .filter((c: Candle | null): c is Candle => c !== null);
 
         if (candles.length > 0) {
+          // Sort by time (oldest first) - ensure chronological order
+          candles.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+          
+          // Log data range for verification
+          const firstDate = candles[0]?.time;
+          const lastDate = candles[candles.length - 1]?.time;
+          const firstPrice = candles[0]?.close;
+          const lastPrice = candles[candles.length - 1]?.close;
+          
           console.log(`✅ Successfully fetched ${candles.length} candles for ${symbol} via Yahoo Finance`);
+          console.log(`   📅 Data range: ${firstDate} ($${firstPrice?.toFixed(2)}) to ${lastDate} ($${lastPrice?.toFixed(2)})`);
           return candles;
         }
       }

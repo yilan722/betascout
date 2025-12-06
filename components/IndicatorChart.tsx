@@ -2,6 +2,9 @@ import React, { useMemo } from 'react';
 import {
   ComposedChart,
   Line,
+  Area,
+  Bar,
+  BarChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -10,8 +13,10 @@ import {
   ReferenceLine,
   Scatter,
   Cell,
+  Rectangle,
 } from 'recharts';
 import { IndicatorData } from '../types';
+import { useTranslation } from '../i18n/useTranslation';
 
 interface IndicatorChartProps {
   data: IndicatorData[];
@@ -19,29 +24,37 @@ interface IndicatorChartProps {
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
+  const { t, language } = useTranslation();
   if (active && payload && payload.length && payload[0].payload) {
     const d = payload[0].payload as IndicatorData;
     if (!d) return null;
     
     const color = d.close >= d.open ? '#10b981' : '#ef4444';
+    const date = new Date(label);
+    const formattedDate = isNaN(date.getTime()) ? label : date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
+    
     return (
       <div className="bg-slate-900 border border-slate-700 p-3 rounded shadow-xl text-xs">
-        <p className="text-slate-400 mb-1">{label}</p>
+        <p className="text-slate-400 mb-1">{formattedDate}</p>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            <span className="text-slate-400">Open: <span style={{color}}>{typeof d.open === 'number' ? d.open.toFixed(2) : 'N/A'}</span></span>
-            <span className="text-slate-400">High: <span style={{color}}>{typeof d.high === 'number' ? d.high.toFixed(2) : 'N/A'}</span></span>
-            <span className="text-slate-400">Low: <span style={{color}}>{typeof d.low === 'number' ? d.low.toFixed(2) : 'N/A'}</span></span>
-            <span className="text-slate-400">Close: <span style={{color}}>{typeof d.close === 'number' ? d.close.toFixed(2) : 'N/A'}</span></span>
+            <span className="text-slate-400">{language === 'zh' ? '开盘' : 'Open'}: <span style={{color}}>{typeof d.open === 'number' ? d.open.toFixed(2) : 'N/A'}</span></span>
+            <span className="text-slate-400">{language === 'zh' ? '最高' : 'High'}: <span style={{color}}>{typeof d.high === 'number' ? d.high.toFixed(2) : 'N/A'}</span></span>
+            <span className="text-slate-400">{language === 'zh' ? '最低' : 'Low'}: <span style={{color}}>{typeof d.low === 'number' ? d.low.toFixed(2) : 'N/A'}</span></span>
+            <span className="text-slate-400">{language === 'zh' ? '收盘' : 'Close'}: <span style={{color}}>{typeof d.close === 'number' ? d.close.toFixed(2) : 'N/A'}</span></span>
         </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 border-t border-slate-800 pt-2">
-            <span className="text-blue-400">EMA20: {typeof d.ema20 === 'number' ? d.ema20.toFixed(2) : 'N/A'}</span>
-            <span className="text-purple-400">RSI: {typeof d.rsi === 'number' ? d.rsi.toFixed(1) : 'N/A'}</span>
+            <span className="text-blue-400">{t.charts.ema20}: {typeof d.ema20 === 'number' ? d.ema20.toFixed(2) : 'N/A'}</span>
+            <span className="text-purple-400">{t.charts.rsi}: {typeof d.rsi === 'number' ? d.rsi.toFixed(1) : 'N/A'}</span>
             <div className="col-span-2 mt-1 pt-1">
                <span className={d.buySignal ? "text-green-500 font-bold" : "text-slate-600"}>
-                  {d.strongBuySignal ? "STRONG BUY" : d.buySignal ? "BUY" : d.isOverbought1 ? "SELL" : "NEUTRAL"}
+                  {d.strongBuySignal ? t.signals.strongBuy : d.buySignal ? t.signals.buy : d.isOverbought1 ? t.signals.sell : t.charts.neutral}
                </span>
             </div>
-            {d.isOversold1 && typeof d.rsi === 'number' && <span className="text-xs text-green-400 col-span-2">Logic: RSI({d.rsi.toFixed(1)}) &lt; 30 & Price &lt; Band</span>}
+            {d.isOversold1 && typeof d.rsi === 'number' && <span className="text-xs text-green-400 col-span-2">{language === 'zh' ? '逻辑' : 'Logic'}: RSI({d.rsi.toFixed(1)}) &lt; 30 & {language === 'zh' ? '价格' : 'Price'} &lt; {language === 'zh' ? '下轨' : 'Band'}</span>}
         </div>
       </div>
     );
@@ -109,10 +122,154 @@ const CandlestickShape = (props: any) => {
   );
 };
 
+// Custom Background Component for RSI highlights
+const RSIBackground: React.FC<{ data: IndicatorData[]; chartHeight: number }> = ({ data, chartHeight }) => {
+  const rsiUpperBandExt = 80;
+  const rsiUpperBand = 70;
+  const rsiLowerBand = 30;
+  const rsiLowerBandExt = 20;
+  
+  // Calculate bar width based on data length
+  const barWidth = data.length > 0 ? (100 / data.length) * 0.8 : 0;
+  
+  return (
+    <g>
+      {data.map((d, i) => {
+        const rsi = d.rsi;
+        if (isNaN(rsi)) return null;
+        
+        let bgColor = null;
+        let bgOpacity = 0;
+        
+        // Pine Script background highlight logic
+        if (rsi >= rsiUpperBandExt) {
+          bgColor = '#ff5a00';
+          bgOpacity = 0.25; // 75% transparency
+        } else if (rsi >= rsiUpperBand && rsi < rsiUpperBandExt) {
+          bgColor = '#ff5a00';
+          bgOpacity = 0.15; // 85% transparency
+        } else if (rsi <= rsiLowerBand && rsi > rsiLowerBandExt) {
+          bgColor = '#089981';
+          bgOpacity = 0.15; // 85% transparency
+        } else if (rsi <= rsiLowerBandExt) {
+          bgColor = '#089981';
+          bgOpacity = 0.25; // 75% transparency
+        }
+        
+        if (!bgColor) return null;
+        
+        // Calculate x position (approximate, will be adjusted by Recharts)
+        const xPercent = (i / (data.length - 1)) * 100;
+        
+        return (
+          <rect
+            key={`bg-${i}`}
+            x={`${xPercent}%`}
+            y={0}
+            width={`${barWidth}%`}
+            height="100%"
+            fill={bgColor}
+            opacity={bgOpacity}
+          />
+        );
+      })}
+    </g>
+  );
+};
+
 export const MainPriceChart: React.FC<IndicatorChartProps> = ({ data }) => {
+  const { t, language } = useTranslation();
   // Filter for signals
   const buySignals = data.filter(d => d.isOversold1);
   const sellSignals = data.filter(d => d.isOverbought1);
+
+  // Calculate evenly spaced time ticks for X-axis based on actual time intervals
+  const timeTicks = useMemo(() => {
+    if (data.length === 0) return [];
+    const ticks: string[] = [];
+    const totalPoints = data.length;
+    
+    // Calculate optimal number of ticks (3-8 based on data length)
+    const numTicks = Math.min(8, Math.max(3, Math.floor(totalPoints / 40)));
+    
+    // Use actual time-based spacing instead of index-based
+    if (totalPoints > 1) {
+      const firstTime = new Date(data[0].time).getTime();
+      const lastTime = new Date(data[totalPoints - 1].time).getTime();
+      const timeRange = lastTime - firstTime;
+      
+      // Always include first and last
+      ticks.push(data[0].time);
+      
+      // Add evenly spaced ticks in between
+      for (let i = 1; i < numTicks - 1; i++) {
+        const targetTime = firstTime + (timeRange * i / (numTicks - 1));
+        // Find closest data point to target time
+        let closestIndex = 0;
+        let minDiff = Infinity;
+        for (let j = 0; j < totalPoints; j++) {
+          const diff = Math.abs(new Date(data[j].time).getTime() - targetTime);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestIndex = j;
+          }
+        }
+        if (data[closestIndex]?.time && !ticks.includes(data[closestIndex].time)) {
+          ticks.push(data[closestIndex].time);
+        }
+      }
+      
+      // Always include last
+      if (data[totalPoints - 1]?.time && !ticks.includes(data[totalPoints - 1].time)) {
+        ticks.push(data[totalPoints - 1].time);
+      }
+    }
+    
+    // Sort ticks by time to ensure correct order
+    ticks.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    
+    return ticks;
+  }, [data]);
+  
+  // Prepare background highlight data (Pine Script logic)
+  const backgroundData = useMemo(() => {
+    const rsiUpperBandExt = 80;
+    const rsiUpperBand = 70;
+    const rsiLowerBand = 30;
+    const rsiLowerBandExt = 20;
+    
+    return data.map((d) => {
+      const rsi = d.rsi;
+      let bgValue = 0;
+      let bgColor = 'transparent';
+      let bgOpacity = 0;
+      
+      if (rsi >= rsiUpperBandExt) {
+        bgValue = 100;
+        bgColor = '#ff5a00';
+        bgOpacity = 0.25;
+      } else if (rsi >= rsiUpperBand && rsi < rsiUpperBandExt) {
+        bgValue = 100;
+        bgColor = '#ff5a00';
+        bgOpacity = 0.15;
+      } else if (rsi <= rsiLowerBand && rsi > rsiLowerBandExt) {
+        bgValue = 100;
+        bgColor = '#089981';
+        bgOpacity = 0.15;
+      } else if (rsi <= rsiLowerBandExt) {
+        bgValue = 100;
+        bgColor = '#089981';
+        bgOpacity = 0.25;
+      }
+      
+      return {
+        ...d,
+        bgValue,
+        bgColor,
+        bgOpacity,
+      };
+    });
+  }, [data]);
 
   // Calculate price range for proper scaling
   const priceRange = useMemo(() => {
@@ -155,7 +312,7 @@ export const MainPriceChart: React.FC<IndicatorChartProps> = ({ data }) => {
     <div className="flex flex-col gap-1">
       {/* 1. Main Candle/Price Chart (Top) */}
       <div className="w-full h-[350px] bg-slate-900/50 rounded-t-lg p-4 border border-slate-800 relative border-b-0">
-          <h4 className="text-slate-400 text-xs uppercase font-bold mb-2">Price Action & Signals (K-Line)</h4>
+          <h4 className="text-slate-400 text-xs uppercase font-bold mb-2">{t.charts.priceAction}</h4>
         <ResponsiveContainer width="100%" height="100%" minHeight={300}>
           <ComposedChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
             <defs>
@@ -173,12 +330,13 @@ export const MainPriceChart: React.FC<IndicatorChartProps> = ({ data }) => {
                 if (!val) return '';
                 const date = new Date(val);
                 if (isNaN(date.getTime())) return val;
-                return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                return date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', year: 'numeric' });
               }}
-              minTickGap={60}
+              ticks={timeTicks}
               angle={-45}
               textAnchor="end"
               height={60}
+              interval={0}
             />
             <YAxis 
               domain={['auto', 'auto']} 
@@ -345,11 +503,49 @@ export const MainPriceChart: React.FC<IndicatorChartProps> = ({ data }) => {
         </ResponsiveContainer>
       </div>
 
-      {/* 2. Indicator 1 Sub-Chart */}
-      <div className="w-full h-[150px] bg-slate-900/50 rounded-b-lg p-4 border border-slate-800 border-t-0 relative">
-         <h4 className="text-slate-400 text-xs uppercase font-bold mb-0">Indicator 1 Status (RSI/Band Logic)</h4>
-         <ResponsiveContainer width="100%" height="100%" minHeight={120}>
-            <ComposedChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 20 }}>
+      {/* 2. Indicator 1 Sub-Chart - RSI Overbought/Oversold (Pine Script Implementation) */}
+      <div className="w-full h-[200px] bg-slate-900/50 rounded-b-lg p-4 border border-slate-800 border-t-0 relative">
+         <div className="flex items-center justify-between mb-2">
+           <h4 className="text-slate-400 text-xs uppercase font-bold">{t.charts.indicator1Status}</h4>
+           {/* RSI Display Table (Pine Script style) */}
+           {data.length > 0 && (() => {
+             const latest = data[data.length - 1];
+             const prevRsi = data.length > 1 ? data[data.length - 2].rsi : latest.rsi;
+             const prev2Rsi = data.length > 2 ? data[data.length - 3].rsi : prevRsi;
+             
+             // Determine RSI momentum (Pine Script logic)
+             let trendArrow = "—";
+             if (latest.rsi > prevRsi && prevRsi > prev2Rsi) {
+               trendArrow = "▲";
+             } else if (latest.rsi < prevRsi && prevRsi < prev2Rsi) {
+               trendArrow = "▼";
+             }
+             
+             // Determine background color based on RSI level
+             const rsiUpperBand = 70;
+             const rsiLowerBand = 30;
+             const bgColor = 
+               latest.rsi >= rsiUpperBand ? '#ff5a00' :
+               latest.rsi <= rsiLowerBand ? '#089981' :
+               '#000000';
+             
+             return (
+               <div 
+                 className="px-3 py-1.5 rounded border-2 text-xs font-bold"
+                 style={{ 
+                   backgroundColor: bgColor,
+                   borderColor: bgColor,
+                   color: '#ffffff'
+                 }}
+               >
+                 <div>RSI {trendArrow}</div>
+                 <div className="text-right">{typeof latest.rsi === 'number' ? latest.rsi.toFixed(1) : 'N/A'}</div>
+               </div>
+             );
+           })()}
+         </div>
+         <ResponsiveContainer width="100%" height="100%" minHeight={160}>
+            <ComposedChart data={backgroundData} margin={{ top: 5, right: 10, left: 0, bottom: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
               <XAxis 
                 dataKey="time" 
@@ -359,79 +555,108 @@ export const MainPriceChart: React.FC<IndicatorChartProps> = ({ data }) => {
                   if (!val) return '';
                   const date = new Date(val);
                   if (isNaN(date.getTime())) return val;
-                  return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                  return date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', year: 'numeric' });
                 }}
-                minTickGap={60}
+                ticks={timeTicks}
                 angle={-45}
                 textAnchor="end"
                 height={60}
+                interval={0}
               />
               <YAxis 
                 domain={[0, 100]} 
                 stroke="#475569" 
                 tick={{fontSize: 10, fill: '#94a3b8'}}
                 width={40}
-                ticks={[0, 30, 50, 70, 100]}
+                ticks={[0, 20, 30, 50, 70, 80, 100]}
                 tickFormatter={(val) => val.toString()}
               />
               <Tooltip 
                 content={({ active, payload, label }: any) => {
                   if (!active || !payload || !payload.length) return null;
-                  const data = payload[0]?.payload as IndicatorData;
-                  if (!data) return null;
+                  const dataPoint = payload[0]?.payload as any;
+                  if (!dataPoint) return null;
                   
                   const date = new Date(label);
-                  const formattedDate = isNaN(date.getTime()) ? label : date.toLocaleDateString('en-US', { 
+                  const formattedDate = isNaN(date.getTime()) ? label : date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { 
                     year: 'numeric', 
                     month: 'short', 
                     day: 'numeric' 
                   });
                   
+                  // Calculate trend arrow (Pine Script logic)
+                  const currentIndex = backgroundData.findIndex((d: any) => d.time === label);
+                  const prevRsi = currentIndex > 0 ? backgroundData[currentIndex - 1]?.rsi : dataPoint.rsi;
+                  const prev2Rsi = currentIndex > 1 ? backgroundData[currentIndex - 2]?.rsi : prevRsi;
+                  let trendArrow = "—";
+                  if (dataPoint.rsi > prevRsi && prevRsi > prev2Rsi) {
+                    trendArrow = "▲";
+                  } else if (dataPoint.rsi < prevRsi && prevRsi < prev2Rsi) {
+                    trendArrow = "▼";
+                  }
+                  
+                  const rsiValue = typeof dataPoint.rsi === 'number' && !isNaN(dataPoint.rsi) ? dataPoint.rsi : 0;
+                  const levelText = 
+                    rsiValue >= 80 ? (language === 'zh' ? '极端超买' : 'Extreme Overbought') :
+                    rsiValue >= 70 ? (language === 'zh' ? '超买' : 'Overbought') :
+                    rsiValue <= 20 ? (language === 'zh' ? '极端超卖' : 'Extreme Oversold') :
+                    rsiValue <= 30 ? (language === 'zh' ? '超卖' : 'Oversold') :
+                    (language === 'zh' ? '中性' : 'Neutral');
+                  
                   return (
                     <div className="bg-slate-900 border border-slate-700 p-3 rounded shadow-xl text-xs">
                       <p className="text-slate-400 mb-1">{formattedDate}</p>
-                      <p className="text-purple-400">
-                        RSI: {typeof data.rsi === 'number' && !isNaN(data.rsi) ? data.rsi.toFixed(1) : 'N/A'}
+                      <p className="text-purple-400 font-bold">
+                        RSI {trendArrow}: {rsiValue.toFixed(1)}
                       </p>
-                      {data.isOversold1 && <p className="text-green-400 text-xs mt-1">Oversold Signal</p>}
-                      {data.isOverbought1 && <p className="text-red-400 text-xs mt-1">Overbought Signal</p>}
+                      <p className={`text-xs mt-1 ${
+                        rsiValue >= 70 ? 'text-red-400' :
+                        rsiValue <= 30 ? 'text-green-400' :
+                        'text-slate-400'
+                      }`}>
+                        {levelText}
+                      </p>
                     </div>
                   );
                 }}
               />
 
-              <ReferenceLine y={70} stroke="#ef4444" strokeDasharray="3 3" label={{ value: "C", position: 'right', fill: '#ef4444', fontSize: 10 }} />
-              <ReferenceLine y={30} stroke="#10b981" strokeDasharray="3 3" label={{ value: "C", position: 'right', fill: '#10b981', fontSize: 10 }} />
-              <ReferenceLine y={0} stroke="#64748b" strokeDasharray="2 2" strokeOpacity={0.3} />
-              <ReferenceLine y={100} stroke="#64748b" strokeDasharray="2 2" strokeOpacity={0.3} />
+              {/* Reference Lines (Pine Script style - invisible dashed lines) */}
+              <ReferenceLine y={50} stroke="#ffffff" strokeDasharray="2 2" strokeOpacity={0.05} />
+              <ReferenceLine y={80} stroke="#ffffff" strokeDasharray="2 2" strokeOpacity={0.05} />
+              <ReferenceLine y={70} stroke="#ffffff" strokeDasharray="2 2" strokeOpacity={0.05} />
+              <ReferenceLine y={30} stroke="#ffffff" strokeDasharray="2 2" strokeOpacity={0.05} />
+              <ReferenceLine y={20} stroke="#ffffff" strokeDasharray="2 2" strokeOpacity={0.05} />
 
+              {/* Dynamic Background Highlights (Pine Script logic) */}
+              {/* Use Bar chart for background highlights - render behind RSI line */}
+              <Bar
+                dataKey="bgValue"
+                fill="#000000"
+                isAnimationActive={false}
+                yAxisId={0}
+                radius={0}
+                stackId="bg"
+              >
+                {backgroundData.map((entry, index) => (
+                  <Cell 
+                    key={`bg-cell-${index}`} 
+                    fill={entry.bgColor || 'transparent'} 
+                    fillOpacity={entry.bgOpacity || 0}
+                  />
+                ))}
+              </Bar>
+
+              {/* RSI Line (Purple) - render on top */}
               <Line 
                 type="monotone" 
                 dataKey="rsi" 
                 stroke="#a855f7"
-                strokeWidth={1.5} 
+                strokeWidth={2} 
                 dot={false} 
                 name="RSI"
                 isAnimationActive={false}
               />
-
-               <Scatter 
-                 data={buySignals.map(d => ({...d, rsi: d.rsi}))} 
-                 shape={(props: any) => {
-                  const { cx, cy } = props;
-                  if (!cx || !cy || isNaN(cx) || isNaN(cy)) return null;
-                  return <circle cx={cx} cy={cy} r={3} fill="#22c55e" />;
-               }} 
-               name="Oversold" />
-
-               <Scatter 
-                 data={sellSignals.map(d => ({...d, rsi: d.rsi}))} 
-                 shape={(props: any) => {
-                  const { cx, cy } = props;
-                  if (!cx || !cy || isNaN(cx) || isNaN(cy)) return null;
-                  return <circle cx={cx} cy={cy} r={3} fill="#ef4444" />;
-               }} 
-               name="Overbought" />
 
             </ComposedChart>
          </ResponsiveContainer>
@@ -457,12 +682,13 @@ const OscillatorTooltip = ({ active, payload, label }: any) => {
 };
 
 export const OscillatorChart: React.FC<IndicatorChartProps> = ({ data }) => {
+  const { t, language } = useTranslation();
   const upperColor = "#ff0066";
   const lowerColor = "#00cc88";
 
   return (
     <div className="w-full h-[250px] bg-[#0f172a] rounded-lg p-4 border border-slate-800 mt-4 relative">
-       <h4 className="text-slate-400 text-xs uppercase font-bold mb-2">Aggregated Scores (Alpha Extract)</h4>
+       <h4 className="text-slate-400 text-xs uppercase font-bold mb-2">{t.charts.indicator2Title}</h4>
       <ResponsiveContainer width="100%" height="100%" minHeight={200}>
         <ComposedChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
@@ -492,7 +718,7 @@ export const OscillatorChart: React.FC<IndicatorChartProps> = ({ data }) => {
               if (!active || !payload || !payload.length) return null;
               
               const date = new Date(label);
-              const formattedDate = isNaN(date.getTime()) ? label : date.toLocaleDateString('en-US', { 
+              const formattedDate = isNaN(date.getTime()) ? label : date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { 
                 year: 'numeric', 
                 month: 'short', 
                 day: 'numeric' 

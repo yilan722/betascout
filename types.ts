@@ -41,6 +41,9 @@ export interface IndicatorData {
   upperAtrBand: number; // EMA20 + 2.5 * ATR
   isOversold1: boolean; // RSI < 30 && Price < LowerATR
   isOverbought1: boolean; // RSI > 70 && Price > UpperATR
+  // Enhanced RSI levels (based on Pine Script)
+  rsiLevel: 'extreme_oversold' | 'oversold' | 'neutral' | 'overbought' | 'extreme_overbought';
+  rsiTrend: 'up' | 'down' | 'neutral'; // RSI momentum trend
 
   // Indicator 2: Aggregated Scores
   aggScore: number;
