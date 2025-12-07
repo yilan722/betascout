@@ -14,6 +14,8 @@ export interface Asset {
   category: AssetCategory;
   price: number;
   change24h: number;
+  industry?: string; // 行业分类
+  marketCap?: string; // 市值情况 (如: "大市值", "中市值", "小市值" 或具体数值)
 }
 
 export interface Candle {

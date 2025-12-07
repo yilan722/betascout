@@ -31,6 +31,21 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick, statu
                 </span>}
             </div>
           <p className="text-xs text-slate-400 truncate w-24">{asset.name}</p>
+          {/* 行业分类和市值信息 - 显示所有有信息的标的 */}
+          {(asset.industry || asset.marketCap) && (
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {asset.industry && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-900/30 text-blue-300 border border-blue-700/30">
+                  {asset.industry}
+                </span>
+              )}
+              {asset.marketCap && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-900/30 text-purple-300 border border-purple-700/30">
+                  {asset.marketCap}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div className="text-right">
           <p className="text-sm font-mono text-slate-200">${asset.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
