@@ -7,7 +7,8 @@ import AssetCard from './components/AssetCard';
 import { MainPriceChart, OscillatorChart, LatentEnergyChart } from './components/IndicatorChart';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SignalWatchPanel } from './components/SignalWatchPanel';
-import { Bell, Activity, Layers, Menu, X, Globe, DollarSign, Cpu, BarChart3, Eye, Languages, Search } from 'lucide-react';
+import { MacroDashboard } from './components/MacroDashboard';
+import { Bell, Activity, Layers, Menu, X, Globe, DollarSign, Cpu, BarChart3, Eye, Languages, Search, TrendingUp } from 'lucide-react';
 import { useTranslation } from './i18n/useTranslation';
 
 // Icons map
@@ -32,7 +33,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [binanceStatus, setBinanceStatus] = useState<{ tested: boolean; available: boolean; message: string } | null>(null);
   const [timeframe, setTimeframe] = useState<Timeframe>('1D');
-  const [viewMode, setViewMode] = useState<'chart' | 'watch'>('chart');
+  const [viewMode, setViewMode] = useState<'chart' | 'watch' | 'macro'>('chart');
 
   // Test Binance API connection on mount
   useEffect(() => {
@@ -97,6 +98,16 @@ const App: React.FC = () => {
         
         setAssets(loadedAssets);
         
+        // Debug: log category distribution
+        if (process.env.NODE_ENV === 'development') {
+          const categoryCounts = loadedAssets.reduce((acc, asset) => {
+            acc[asset.category] = (acc[asset.category] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>);
+          console.log('Loaded assets by category:', categoryCounts);
+          console.log('Sample assets:', loadedAssets.slice(0, 5).map(a => ({ id: a.id, category: a.category })));
+        }
+        
         // Check if any assets have valid prices (not all failed)
         const validAssets = loadedAssets.filter(a => a.price > 0);
         if (validAssets.length === 0 && loadedAssets.length > 0) {
@@ -111,6 +122,29 @@ const App: React.FC = () => {
     };
     loadAssets();
   }, []);
+
+  // When category changes, auto-select first asset in that category if current asset is not in the new category
+  useEffect(() => {
+    if (assets.length === 0) return;
+    
+    const currentAsset = assets.find(a => a.id === selectedAssetId);
+    
+    if (selectedCategory !== 'ALL') {
+      // If current asset is not in the selected category, select first asset in that category
+      if (!currentAsset || currentAsset.category !== selectedCategory) {
+        // Filter assets by category first
+        const categoryAssets = assets.filter(a => a.category === selectedCategory);
+        if (categoryAssets.length > 0) {
+          setSelectedAssetId(categoryAssets[0].id);
+        }
+      }
+    } else {
+      // If switching to ALL and no current asset, select first available
+      if (!currentAsset && assets.length > 0) {
+        setSelectedAssetId(assets[0].id);
+      }
+    }
+  }, [selectedCategory, assets, selectedAssetId]);
 
   // Analyze selected asset
   useEffect(() => {
@@ -164,9 +198,24 @@ const App: React.FC = () => {
   const filteredAssets = useMemo(() => {
     let filtered = assets;
     
-    // Filter by category
+    // Filter by category - ensure strict comparison
     if (selectedCategory !== 'ALL') {
-      filtered = filtered.filter(a => a.category === selectedCategory);
+      const beforeCount = filtered.length;
+      filtered = filtered.filter(a => {
+        // Ensure we're comparing the same type
+        const assetCategory = String(a.category);
+        const selectedCat = String(selectedCategory);
+        return assetCategory === selectedCat;
+      });
+      
+      // Debug logging
+      console.log(`[Filter] Selected category: "${selectedCategory}"`);
+      console.log(`[Filter] Total assets: ${beforeCount}, Filtered: ${filtered.length}`);
+      if (filtered.length === 0 && beforeCount > 0) {
+        // Log sample assets to see what categories we have
+        const sampleCategories = assets.slice(0, 10).map(a => `${a.id}: ${a.category}`);
+        console.log(`[Filter] Sample asset categories:`, sampleCategories);
+      }
     }
     
     // Filter by search query (case-insensitive search in symbol, name, and id)
@@ -225,9 +274,11 @@ const App: React.FC = () => {
               placeholder={language === 'zh' ? '搜索代码/名称...' : 'Search ticker/name...'}
               value={searchQuery}
               onChange={(e) => {
-                setSearchQuery(e.target.value);
+                const newQuery = e.target.value;
+                setSearchQuery(newQuery);
+                
                 // Auto-select first result if only one match
-                const query = e.target.value.trim().toLowerCase();
+                const query = newQuery.trim().toLowerCase();
                 if (query) {
                   const matches = assets.filter(a => {
                     const categoryMatch = selectedCategory === 'ALL' || a.category === selectedCategory;
@@ -263,10 +314,23 @@ const App: React.FC = () => {
 
         {/* Category Tabs */}
         <div className="p-2 grid grid-cols-3 gap-1">
-            {['ALL', ...Object.values(AssetCategory)].map((cat) => (
+            {[
+                'ALL',
+                AssetCategory.US_STOCKS,
+                AssetCategory.CN_A_SHARES,
+                AssetCategory.HK_STOCKS,
+                AssetCategory.COMMODITIES,
+                AssetCategory.CRYPTO,
+                AssetCategory.FOREX
+            ].map((cat) => (
                 <button
                     key={cat}
-                    onClick={() => setSelectedCategory(cat as AssetCategory | 'ALL')}
+                    onClick={() => {
+                        // Clear search when switching category
+                        setSearchQuery('');
+                        // Update category - the useEffect will handle auto-selecting the first asset
+                        setSelectedCategory(cat as AssetCategory | 'ALL');
+                    }}
                     className={`text-[10px] py-1 px-1 rounded truncate transition-colors ${
                         selectedCategory === cat 
                         ? 'bg-blue-600 text-white' 
@@ -394,6 +458,17 @@ const App: React.FC = () => {
                         <Eye size={14} />
                         {t.nav.watchPanel}
                     </button>
+                    <button 
+                        onClick={() => setViewMode('macro')}
+                        className={`px-3 py-1 text-xs font-bold rounded transition-colors flex items-center gap-1 ${
+                            viewMode === 'macro' 
+                            ? 'bg-blue-600 text-white shadow' 
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                    >
+                        <TrendingUp size={14} />
+                        {language === 'zh' ? '宏观指标' : 'Macro'}
+                    </button>
                 </div>
 
                 {/* Simulated Alert Box */}
@@ -437,6 +512,8 @@ const App: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-6 scroll-smooth">
             {viewMode === 'watch' ? (
                 <SignalWatchPanel timeframe={timeframe} />
+            ) : viewMode === 'macro' ? (
+                <MacroDashboard />
             ) : (
                 <>
             {/* Alert Status Banner */}

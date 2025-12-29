@@ -336,51 +336,62 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                   {groupSignals.map((signal, idx) => (
                     <div
                       key={`${signal.assetId}-${signal.signalDate}-${idx}`}
-                      className={`p-3 rounded-lg border ${getSignalColor(signal.signalType)}`}
+                      className={`p-2 rounded-lg border ${getSignalColor(signal.signalType)}`}
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            {getSignalIcon(signal.signalType)}
-                            <span className="font-bold text-white">{signal.symbol}</span>
-                            <span className="text-slate-400 text-xs">({signal.name})</span>
-                            <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                              {signal.category}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {/* Icon */}
+                        <div className="flex-shrink-0">
+                          {getSignalIcon(signal.signalType)}
+                        </div>
+                        
+                        {/* Symbol and Name */}
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <span className="font-bold text-white text-sm">{signal.symbol}</span>
+                          <span className="text-slate-400 text-xs">({signal.name})</span>
+                        </div>
+                        
+                        {/* Category */}
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 flex-shrink-0">
+                          {signal.category}
+                        </span>
+                        
+                        {/* Date */}
+                        <div className="flex items-center gap-1 text-slate-400 text-xs flex-shrink-0">
+                          <Clock size={11} />
+                          <span>{formatDate(signal.signalDate)}</span>
+                          <span className="text-slate-500">
+                            ({signal.daysAgo === 0 ? t.common.today : signal.daysAgo === 1 ? t.common.dayAgo : `${signal.daysAgo} ${t.common.daysAgo}`})
+                          </span>
+                        </div>
+                        
+                        {/* Price */}
+                        <div className="flex items-center gap-1 text-slate-400 text-xs flex-shrink-0">
+                          <DollarSign size={11} />
+                          <span>${signal.price.toFixed(2)}</span>
+                        </div>
+                        
+                        {/* RSI */}
+                        <div className="text-slate-400 text-xs flex-shrink-0">
+                          RSI: <span className="text-purple-400 font-semibold">{signal.rsi.toFixed(1)}</span>
+                        </div>
+                        
+                        {/* Indicator badges */}
+                        <div className="flex gap-1.5 flex-shrink-0 ml-auto">
+                          {signal.indicator1 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">
+                              {t.watchPanel.indicator1}
                             </span>
-                          </div>
-                          <div className="flex items-center gap-4 text-xs mt-2">
-                            <div className="flex items-center gap-1 text-slate-400">
-                              <Clock size={12} />
-                              <span>{formatDate(signal.signalDate)}</span>
-                              <span className="text-slate-500 ml-1">
-                                ({signal.daysAgo === 0 ? t.common.today : signal.daysAgo === 1 ? t.common.dayAgo : `${signal.daysAgo} ${t.common.daysAgo}`})
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1 text-slate-400">
-                              <DollarSign size={12} />
-                              <span>${signal.price.toFixed(2)}</span>
-                            </div>
-                            <div className="text-slate-400">
-                              RSI: <span className="text-purple-400">{signal.rsi.toFixed(1)}</span>
-                            </div>
-                          </div>
-                          <div className="flex gap-2 mt-2">
-                            {signal.indicator1 && (
-                              <span className="text-xs px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
-                                {t.watchPanel.indicator1}
-                              </span>
-                            )}
-                            {signal.indicator2 && (
-                              <span className="text-xs px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">
-                                {t.watchPanel.indicator2}
-                              </span>
-                            )}
-                            {signal.indicator3 && (
-                              <span className="text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300">
-                                {t.watchPanel.indicator3}
-                              </span>
-                            )}
-                          </div>
+                          )}
+                          {signal.indicator2 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                              {t.watchPanel.indicator2}
+                            </span>
+                          )}
+                          {signal.indicator3 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">
+                              {t.watchPanel.indicator3}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
