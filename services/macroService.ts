@@ -1,6 +1,18 @@
 // Macro Indicators Service
 // US Market Saturation & Positioning Index
 
+import { fetchWithProxy } from './api';
+import { MANUAL_MACRO_DATA } from './macroDataConfig';
+import {
+  fetchBofACashViaPerplexity,
+  fetchMutualFundCashViaPerplexity,
+  fetchNAAIMViaPerplexity,
+  fetchCFTCNetLongViaPerplexity,
+  fetchPutCallRatioViaPerplexity,
+  fetchVIXViaPerplexity,
+  fetchSKEWViaPerplexity,
+} from './perplexityService';
+
 export interface MacroIndicator {
   id: string;
   name: string;
@@ -27,16 +39,14 @@ export interface MacroDashboardData {
   lastUpdated: string;
 }
 
-// Fetch Put/Call Ratio from CBOE (using Yahoo Finance as proxy)
+// Fetch Put/Call Ratio from CBOE (using Yahoo Finance as proxy, with Perplexity fallback)
 const fetchPutCallRatio = async (): Promise<number | null> => {
+  // Strategy 1: Try Yahoo Finance first (fastest)
   try {
     // CBOE Equity Put/Call Ratio is available via Yahoo Finance
     // Symbol: ^CPCE (CBOE Equity Put/Call Ratio)
-    // We'll use a proxy to fetch this
     const url = 'https://query1.finance.yahoo.com/v8/finance/chart/%5ECPCE?interval=1d&range=5d';
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    
-    const response = await fetch(proxyUrl);
+    const response = await fetchWithProxy(url);
     const data = await response.json();
     const result = data.chart?.result?.[0];
     
@@ -46,23 +56,37 @@ const fetchPutCallRatio = async (): Promise<number | null> => {
       if (closes && closes.length > 0) {
         // Get the most recent non-null value
         const latestValue = closes[closes.length - 1];
-        return latestValue;
+        if (latestValue !== null && !isNaN(latestValue) && latestValue > 0) {
+          console.log('Put/Call Ratio: Fetched from Yahoo Finance:', latestValue);
+          return latestValue;
+        }
       }
     }
-    return null;
   } catch (error) {
-    console.warn('Failed to fetch Put/Call Ratio:', error);
-    return null;
+    console.warn('Yahoo Finance fetch for Put/Call Ratio failed, trying Perplexity...', error);
   }
+  
+  // Strategy 2: Try Perplexity API as fallback
+  try {
+    const perplexityData = await fetchPutCallRatioViaPerplexity();
+    if (perplexityData.value !== null) {
+      console.log('Put/Call Ratio: Fetched via Perplexity:', perplexityData.value);
+      return perplexityData.value;
+    }
+  } catch (error) {
+    console.warn('Perplexity fetch for Put/Call Ratio failed:', error);
+  }
+  
+  console.warn('Put/Call Ratio: All fetch methods failed');
+  return null;
 };
 
-// Fetch VIX from Yahoo Finance
+// Fetch VIX from Yahoo Finance (with Perplexity fallback)
 const fetchVIX = async (): Promise<number | null> => {
+  // Strategy 1: Try Yahoo Finance first
   try {
     const url = 'https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=5d';
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    
-    const response = await fetch(proxyUrl);
+    const response = await fetchWithProxy(url);
     const data = await response.json();
     const result = data.chart?.result?.[0];
     
@@ -70,23 +94,38 @@ const fetchVIX = async (): Promise<number | null> => {
       const quotes = result.indicators.quote[0];
       const closes = quotes.close;
       if (closes && closes.length > 0) {
-        return closes[closes.length - 1];
+        const latestValue = closes[closes.length - 1];
+        if (latestValue !== null && !isNaN(latestValue) && latestValue > 0) {
+          console.log('VIX: Fetched from Yahoo Finance:', latestValue);
+          return latestValue;
+        }
       }
     }
-    return null;
   } catch (error) {
-    console.warn('Failed to fetch VIX:', error);
-    return null;
+    console.warn('Yahoo Finance fetch for VIX failed, trying Perplexity...', error);
   }
+  
+  // Strategy 2: Try Perplexity API as fallback
+  try {
+    const perplexityData = await fetchVIXViaPerplexity();
+    if (perplexityData.value !== null) {
+      console.log('VIX: Fetched via Perplexity:', perplexityData.value);
+      return perplexityData.value;
+    }
+  } catch (error) {
+    console.warn('Perplexity fetch for VIX failed:', error);
+  }
+  
+  console.warn('VIX: All fetch methods failed');
+  return null;
 };
 
-// Fetch SKEW Index from Yahoo Finance
+// Fetch SKEW Index from Yahoo Finance (with Perplexity fallback)
 const fetchSKEW = async (): Promise<number | null> => {
+  // Strategy 1: Try Yahoo Finance first
   try {
     const url = 'https://query1.finance.yahoo.com/v8/finance/chart/%5ESKEW?interval=1d&range=5d';
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    
-    const response = await fetch(proxyUrl);
+    const response = await fetchWithProxy(url);
     const data = await response.json();
     const result = data.chart?.result?.[0];
     
@@ -94,14 +133,30 @@ const fetchSKEW = async (): Promise<number | null> => {
       const quotes = result.indicators.quote[0];
       const closes = quotes.close;
       if (closes && closes.length > 0) {
-        return closes[closes.length - 1];
+        const latestValue = closes[closes.length - 1];
+        if (latestValue !== null && !isNaN(latestValue) && latestValue > 0) {
+          console.log('SKEW: Fetched from Yahoo Finance:', latestValue);
+          return latestValue;
+        }
       }
     }
-    return null;
   } catch (error) {
-    console.warn('Failed to fetch SKEW:', error);
-    return null;
+    console.warn('Yahoo Finance fetch for SKEW failed, trying Perplexity...', error);
   }
+  
+  // Strategy 2: Try Perplexity API as fallback
+  try {
+    const perplexityData = await fetchSKEWViaPerplexity();
+    if (perplexityData.value !== null) {
+      console.log('SKEW: Fetched via Perplexity:', perplexityData.value);
+      return perplexityData.value;
+    }
+  } catch (error) {
+    console.warn('Perplexity fetch for SKEW failed:', error);
+  }
+  
+  console.warn('SKEW: All fetch methods failed');
+  return null;
 };
 
 // Calculate % of S&P 500 stocks above 50 DMA
@@ -111,9 +166,7 @@ const fetchSP500Above50DMA = async (): Promise<number | null> => {
     // For now, we'll use a simplified approach with SPY as proxy
     // In production, this should be calculated from actual S&P 500 components
     const url = 'https://query1.finance.yahoo.com/v8/finance/chart/SPY?interval=1d&range=3mo';
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    
-    const response = await fetch(proxyUrl);
+    const response = await fetchWithProxy(url);
     const data = await response.json();
     const result = data.chart?.result?.[0];
     
@@ -151,9 +204,7 @@ const fetchSP500Above50DMA = async (): Promise<number | null> => {
 const fetchSPY200DMADeviation = async (): Promise<number | null> => {
   try {
     const url = 'https://query1.finance.yahoo.com/v8/finance/chart/SPY?interval=1d&range=1y';
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    
-    const response = await fetch(proxyUrl);
+    const response = await fetchWithProxy(url);
     const data = await response.json();
     const result = data.chart?.result?.[0];
     
@@ -173,6 +224,250 @@ const fetchSPY200DMADeviation = async (): Promise<number | null> => {
   } catch (error) {
     console.warn('Failed to fetch SPY 200 DMA deviation:', error);
     return null;
+  }
+};
+
+// Fetch BofA FMS Cash Level
+// Attempts to fetch from Perplexity API first, falls back to manual config
+const fetchBofACash = async (): Promise<{ value: number | null; timestamp: string | null; isManual: boolean }> => {
+  // Strategy 1: Try Perplexity API to get latest data (PRIORITY)
+  try {
+    const perplexityData = await fetchBofACashViaPerplexity();
+    if (perplexityData.value !== null) {
+      console.log(`✅ BofA FMS Cash Level: Fetched via Perplexity Sonar (${perplexityData.value}%)`);
+      return {
+        value: perplexityData.value,
+        timestamp: perplexityData.timestamp || new Date().toISOString(),
+        isManual: false, // Data from Perplexity = real-time
+      };
+    }
+  } catch (error) {
+    console.warn('⚠️ Perplexity fetch for BofA Cash failed, trying fallback:', error);
+  }
+  
+  // Strategy 2: Use manual config as fallback
+  if (MANUAL_MACRO_DATA.bofa_cash) {
+    const manual = MANUAL_MACRO_DATA.bofa_cash;
+    console.log(`📝 BofA FMS Cash Level: Using manual config value (${manual.value}% as of ${manual.date})`);
+    return { 
+      value: manual.value, 
+      timestamp: new Date(manual.date).toISOString(),
+      isManual: true, // Data from manual config
+    };
+  }
+  
+  console.warn('❌ BofA FMS Cash Level: No data available');
+  return { value: null, timestamp: null, isManual: false };
+};
+
+// Fetch Mutual Fund Cash Ratio from ICI
+// Attempts to fetch from Perplexity API first, falls back to manual config
+const fetchMutualFundCash = async (): Promise<{ value: number | null; timestamp: string | null; isManual: boolean }> => {
+  // Strategy 1: Try Perplexity API to get latest data (PRIORITY)
+  try {
+    const perplexityData = await fetchMutualFundCashViaPerplexity();
+    if (perplexityData.value !== null) {
+      console.log(`✅ Mutual Fund Cash Ratio: Fetched via Perplexity Sonar (${perplexityData.value}%)`);
+      return {
+        value: perplexityData.value,
+        timestamp: perplexityData.timestamp || new Date().toISOString(),
+        isManual: false, // Data from Perplexity = real-time
+      };
+    }
+  } catch (error) {
+    console.warn('⚠️ Perplexity fetch for Mutual Fund Cash failed, trying fallback:', error);
+  }
+  
+  // Strategy 2: Use manual config if available
+  if (MANUAL_MACRO_DATA.mutual_fund_cash) {
+    const manual = MANUAL_MACRO_DATA.mutual_fund_cash;
+    console.log(`📝 Mutual Fund Cash Ratio: Using manual config value (${manual.value}% as of ${manual.date})`);
+    return { 
+      value: manual.value, 
+      timestamp: new Date(manual.date).toISOString(),
+      isManual: true, // Data from manual config
+    };
+  }
+  
+  console.warn('❌ Mutual Fund Cash Ratio: No data available');
+  return { value: null, timestamp: null, isManual: false };
+};
+
+// Fetch NAAIM Exposure Index
+// Attempts to fetch from NAAIM website or data aggregators
+const fetchNAAIM = async (): Promise<{ value: number | null; timestamp: string | null; isManual: boolean }> => {
+  try {
+    // NAAIM publishes data on their website: https://www.naaim.org/exposure-index/
+    // Try multiple URL patterns
+    const naaimUrls = [
+      'https://www.naaim.org/exposure-index/',
+      'https://www.naaim.org/',
+    ];
+    
+    for (const naaimUrl of naaimUrls) {
+      try {
+        const response = await fetchWithProxy(naaimUrl);
+        const html = await response.text();
+        
+        // Strategy 1: Look for JSON data in script tags
+        const jsonScriptMatch = html.match(/<script[^>]*>[\s\S]*?({[^}]*exposure[^}]*})[\s\S]*?<\/script>/i);
+        if (jsonScriptMatch) {
+          try {
+            const jsonData = JSON.parse(jsonScriptMatch[1]);
+            const value = parseFloat(jsonData.exposure || jsonData.value || jsonData.index);
+            if (!isNaN(value) && value >= 0 && value <= 200) {
+              return { value, timestamp: new Date().toISOString(), isManual: false };
+            }
+          } catch (e) {
+            // Not valid JSON, continue
+          }
+        }
+        
+        // Strategy 2: Look for table data with exposure values
+        const tableMatch = html.match(/<table[^>]*>[\s\S]*?(\d+\.?\d*)[\s\S]*?<\/table>/i);
+        if (tableMatch) {
+          const value = parseFloat(tableMatch[1]);
+          if (!isNaN(value) && value >= 0 && value <= 200) {
+            return { value, timestamp: new Date().toISOString(), isManual: false };
+          }
+        }
+        
+        // Strategy 3: Look for common patterns
+        const patterns = [
+          /exposure[\s:]+index[\s:]+(\d+\.?\d*)/i,
+          /current[\s:]+exposure[\s:]+(\d+\.?\d*)/i,
+          /naaim[\s:]+(\d+\.?\d*)/i,
+          /(\d+\.?\d*)\s*%[\s]*exposure/i,
+          /exposure[\s:]+(\d+\.?\d*)\s*%/i,
+        ];
+        
+        for (const pattern of patterns) {
+          const match = html.match(pattern);
+          if (match) {
+            const value = parseFloat(match[1]);
+            if (!isNaN(value) && value >= 0 && value <= 200) {
+              return { value, timestamp: new Date().toISOString(), isManual: false };
+            }
+          }
+        }
+        
+        // Strategy 4: Look for numbers in the 0-200 range that might be the index
+        // This is a fallback - look for numbers near common keywords
+        const numberNearKeyword = html.match(/(?:exposure|naaim|index)[\s\S]{0,100}?(\d{1,3}(?:\.\d+)?)/i);
+        if (numberNearKeyword) {
+          const value = parseFloat(numberNearKeyword[1]);
+          if (!isNaN(value) && value >= 0 && value <= 200) {
+            return { value, timestamp: new Date().toISOString(), isManual: false };
+          }
+        }
+      } catch (fetchError) {
+        console.warn(`NAAIM URL ${naaimUrl} fetch failed:`, fetchError);
+        continue;
+      }
+    }
+    
+    // Strategy 5: Try Perplexity API (PRIORITY)
+    try {
+      const perplexityData = await fetchNAAIMViaPerplexity();
+      if (perplexityData.value !== null) {
+        console.log(`✅ NAAIM Exposure Index: Fetched via Perplexity Sonar (${perplexityData.value})`);
+        return {
+          value: perplexityData.value,
+          timestamp: perplexityData.timestamp || new Date().toISOString(),
+          isManual: false, // Data from Perplexity = real-time
+        };
+      }
+    } catch (error) {
+      console.warn('⚠️ Perplexity fetch for NAAIM failed, trying fallback:', error);
+    }
+    
+    // Strategy 6: Use manual config if available
+    if (MANUAL_MACRO_DATA.naaim) {
+      const manual = MANUAL_MACRO_DATA.naaim;
+      console.log(`📝 NAAIM Exposure Index: Using manual config value (${manual.value} as of ${manual.date})`);
+      return { 
+        value: manual.value, 
+        timestamp: new Date(manual.date).toISOString(),
+        isManual: true, // Data from manual config
+      };
+    }
+    
+    // If all strategies fail, return null
+    console.warn('❌ NAAIM Exposure Index: No data available');
+    return { value: null, timestamp: null, isManual: false };
+  } catch (error) {
+    console.warn('NAAIM fetch failed:', error);
+    return { value: null, timestamp: null, isManual: false };
+  }
+};
+
+// Fetch CFTC Net Long Position
+// Attempts to fetch from CFTC COT reports or data aggregators
+const fetchCFTCNetLong = async (): Promise<{ value: number | null; timestamp: string | null; isManual: boolean }> => {
+  try {
+    // CFTC COT data is available via their API or through data aggregators
+    // CFTC API endpoint (free, no key required)
+    // ES (S&P 500 E-mini) contract code: 13874A
+    // NQ (Nasdaq 100 E-mini) contract code: 209742
+    
+    // Strategy 1: Try CFTC's public COT data
+    const cftcBaseUrl = 'https://www.cftc.gov/dea/newcot/FinFutWk.txt';
+    
+    try {
+      const response = await fetchWithProxy(cftcBaseUrl);
+      const text = await response.text();
+      
+      // Parse CFTC COT text format
+      // Format: Date, Market, Open Interest, Non-Commercial Long, Non-Commercial Short, etc.
+      const lines = text.split('\n').filter(line => line.trim());
+      
+      // Find ES (S&P 500) and NQ (Nasdaq) data
+      // Calculate net long position and percentile
+      // This is complex parsing, for now we'll return null and log
+      console.log('CFTC COT data fetched, parsing...');
+      
+      // For a complete implementation, we would:
+      // 1. Parse the text file
+      // 2. Extract ES and NQ non-commercial positions
+      // 3. Calculate net long (long - short)
+      // 4. Compare to historical data to get percentile
+      
+    } catch (cftcError) {
+      console.warn('CFTC direct fetch failed, trying alternative sources...', cftcError);
+    }
+    
+    // Strategy 2: Try Perplexity API (PRIORITY)
+    try {
+      const perplexityData = await fetchCFTCNetLongViaPerplexity();
+      if (perplexityData.value !== null) {
+        console.log(`✅ CFTC Net Long Position: Fetched via Perplexity Sonar (${perplexityData.value} percentile)`);
+        return {
+          value: perplexityData.value,
+          timestamp: perplexityData.timestamp || new Date().toISOString(),
+          isManual: false, // Data from Perplexity = real-time
+        };
+      }
+    } catch (error) {
+      console.warn('⚠️ Perplexity fetch for CFTC failed, trying fallback:', error);
+    }
+    
+    // Strategy 3: Use manual config if available
+    if (MANUAL_MACRO_DATA.cftc_net_long) {
+      const manual = MANUAL_MACRO_DATA.cftc_net_long;
+      console.log(`📝 CFTC Net Long Position: Using manual config value (${manual.value} percentile as of ${manual.date})`);
+      return { 
+        value: manual.value, 
+        timestamp: new Date(manual.date).toISOString(),
+        isManual: true, // Data from manual config
+      };
+    }
+    
+    // If all strategies fail, return null
+    console.warn('❌ CFTC Net Long Position: No data available');
+    return { value: null, timestamp: null, isManual: false };
+  } catch (error) {
+    console.warn('CFTC Net Long Position fetch failed:', error);
+    return { value: null, timestamp: null, isManual: false };
   }
 };
 
@@ -214,21 +509,108 @@ const calculateIndicatorScore = (indicator: MacroIndicator): number => {
   return 0;
 };
 
+// Cache key for macro indicators
+const MACRO_CACHE_KEY = 'macro_indicators_cache';
+const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
+interface MacroCache {
+  data: MacroDashboardData;
+  timestamp: string;
+  fetchedAt: string;
+}
+
+/**
+ * Get cached macro indicators if available and not expired
+ */
+const getCachedMacroIndicators = (): MacroDashboardData | null => {
+  try {
+    const cached = localStorage.getItem(MACRO_CACHE_KEY);
+    if (!cached) {
+      console.log('📦 No cached macro indicators found');
+      return null;
+    }
+    
+    const cache: MacroCache = JSON.parse(cached);
+    const cacheTime = new Date(cache.timestamp).getTime();
+    const now = Date.now();
+    const age = now - cacheTime;
+    
+    if (age > CACHE_DURATION_MS) {
+      console.log(`📦 Cached macro indicators expired (age: ${Math.round(age / (60 * 60 * 1000))} hours), will fetch fresh data`);
+      localStorage.removeItem(MACRO_CACHE_KEY);
+      return null;
+    }
+    
+    const hoursRemaining = Math.round((CACHE_DURATION_MS - age) / (60 * 60 * 1000));
+    console.log(`✅ Using cached macro indicators (${hoursRemaining} hours remaining until refresh)`);
+    return cache.data;
+  } catch (error) {
+    console.warn('Failed to read macro indicators cache:', error);
+    return null;
+  }
+};
+
+/**
+ * Save macro indicators to cache
+ */
+const saveCachedMacroIndicators = (data: MacroDashboardData): void => {
+  try {
+    const cache: MacroCache = {
+      data,
+      timestamp: new Date().toISOString(),
+      fetchedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(MACRO_CACHE_KEY, JSON.stringify(cache));
+    console.log('💾 Macro indicators cached successfully');
+  } catch (error) {
+    console.warn('Failed to save macro indicators cache:', error);
+  }
+};
+
 // Fetch all macro indicators
-export const fetchMacroIndicators = async (): Promise<MacroDashboardData> => {
+export const fetchMacroIndicators = async (forceRefresh: boolean = false): Promise<MacroDashboardData> => {
+  // Check cache first (unless force refresh is requested)
+  if (!forceRefresh) {
+    const cached = getCachedMacroIndicators();
+    if (cached) {
+      return cached;
+    }
+  } else {
+    console.log('🔄 Force refresh requested, bypassing cache');
+  }
+  
   const now = new Date();
   const lastUpdated = now.toISOString();
   
-  // Fetch real-time data
-  const [putCallRatio, vix, skew, sp500Above50, spy200Deviation] = await Promise.all([
+  // Fetch real-time data with timestamps
+  const [
+    putCallRatio,
+    vix,
+    skew,
+    sp500Above50,
+    spy200Deviation,
+    bofaCashData,
+    mutualFundCashData,
+    naaimData,
+    cftcData,
+  ] = await Promise.all([
     fetchPutCallRatio(),
     fetchVIX(),
     fetchSKEW(),
     fetchSP500Above50DMA(),
     fetchSPY200DMADeviation(),
+    fetchBofACash(),
+    fetchMutualFundCash(),
+    fetchNAAIM(),
+    fetchCFTCNetLong(),
   ]);
   
+  // Get timestamps for real-time data
+  const realTimeTimestamp = now.toISOString();
+  
   // Define all indicators with their configurations
+  // Note: For indicators that cannot be fetched automatically, value is set to null
+  // and lastUpdate reflects when the fetch attempt was made
   const indicators: MacroIndicator[] = [
     {
       id: 'bofa_cash',
@@ -236,17 +618,19 @@ export const fetchMacroIndicators = async (): Promise<MacroDashboardData> => {
       nameZh: 'BofA 基金经理现金水平',
       category: 'dry_powder',
       weight: 0.20,
-      value: 3.5, // Example value - in production, fetch from BofA report or news API
+      value: bofaCashData.value, // null if not available - requires manual update from BofA reports
       unit: '%',
       riskThreshold: 4.5,
       extremeThreshold: 4.0,
-      dataSource: 'BofA Research / Financial News',
+      dataSource: bofaCashData.isManual
+        ? 'BofA Research / Financial News (手动配置)'
+        : 'BofA Research / Financial News (Perplexity Sonar)',
       updateFrequency: 'Monthly',
-      lastUpdate: lastUpdated,
+      lastUpdate: bofaCashData.timestamp ?? lastUpdated,
       status: 'normal',
       score: 0,
-      description: 'Measures the average cash level held by global fund managers surveyed by Bank of America. Lower cash levels indicate managers are fully invested with little dry powder left. When cash drops below 4.0%, it signals extreme positioning and potential exhaustion of buying power. Historical data shows that levels below 4.0% have often preceded market corrections.',
-      descriptionZh: '衡量美银全球基金经理调查中的平均现金持有水平。现金水平越低，说明基金经理已接近满仓，手中弹药不足。当现金水平降至4.0%以下时，表明市场极度拥挤，买盘力量可能枯竭。历史数据显示，4.0%以下往往预示着市场调整。2025年2月该指标降至3.5%，精准预示了后续的风险。',
+      description: 'Measures the average cash level held by global fund managers surveyed by Bank of America. Lower cash levels indicate managers are fully invested with little dry powder left. When cash drops below 4.0%, it signals extreme positioning and potential exhaustion of buying power. Historical data shows that levels below 4.0% have often preceded market corrections. As of December 2025, the cash level reached 3.3%, the lowest level in survey history, breaking previous lows from the dot-com bubble era and 2021.',
+      descriptionZh: '衡量美银全球基金经理调查中的平均现金持有水平。现金水平越低，说明基金经理已接近满仓，手中弹药不足。当现金水平降至4.0%以下时，表明市场极度拥挤，买盘力量可能枯竭。历史数据显示，4.0%以下往往预示着市场调整。2025年12月该指标降至3.3%，创历史新低（打破了互联网泡沫时期和2021年的低点），较11月的3.7%和10月的3.8%进一步下降，表明机构投资者手中的现金几乎已经"打光"，全部投入到了市场中。',
     },
     {
       id: 'mutual_fund_cash',
@@ -254,13 +638,15 @@ export const fetchMacroIndicators = async (): Promise<MacroDashboardData> => {
       nameZh: '公募基金现金比例',
       category: 'dry_powder',
       weight: 0.10,
-      value: 2.1, // Example value - in production, fetch from ICI
+      value: mutualFundCashData.value, // null if not available
       unit: '%',
       riskThreshold: 2.5,
       extremeThreshold: 2.0,
-      dataSource: 'ICI (Investment Company Institute)',
+      dataSource: mutualFundCashData.isManual
+        ? 'ICI (Investment Company Institute) (手动配置)'
+        : 'ICI (Investment Company Institute) (Perplexity Sonar)',
       updateFrequency: 'Monthly',
-      lastUpdate: lastUpdated,
+      lastUpdate: mutualFundCashData.timestamp ?? lastUpdated,
       status: 'normal',
       score: 0,
       description: 'The percentage of total assets held in cash by US mutual funds. This represents the "dry powder" available to long-term institutional investors. When this ratio falls to historical lows (below 2.0%), it indicates that traditional long-term capital has been fully deployed, leaving little room for further market advances.',
@@ -272,13 +658,15 @@ export const fetchMacroIndicators = async (): Promise<MacroDashboardData> => {
       nameZh: 'NAAIM 风险敞口指数',
       category: 'active_exposure',
       weight: 0.15,
-      value: 75, // Example value - in production, fetch from NAAIM website
+      value: naaimData.value, // null if not available
       unit: '%',
       riskThreshold: 80,
       extremeThreshold: 95,
-      dataSource: 'NAAIM.org',
+      dataSource: naaimData.isManual
+        ? 'NAAIM.org (手动配置)'
+        : 'NAAIM.org (Perplexity Sonar)',
       updateFrequency: 'Weekly (Thursday)',
-      lastUpdate: lastUpdated,
+      lastUpdate: naaimData.timestamp ?? lastUpdated,
       status: 'normal',
       score: 0,
       description: 'Measures the average equity exposure of active investment managers in North America. Values above 80% indicate managers are heavily positioned long. When the index exceeds 95% or even 100%, it means managers are not only fully invested but also using leverage, creating extreme crowding. Any negative catalyst can trigger a cascade of selling as these leveraged positions unwind.',
@@ -290,13 +678,15 @@ export const fetchMacroIndicators = async (): Promise<MacroDashboardData> => {
       nameZh: 'CFTC 非商业净多头',
       category: 'active_exposure',
       weight: 0.10,
-      value: 65, // Example value - in production, fetch from CFTC COT report
+      value: cftcData.value, // null if not available
       unit: 'Percentile',
       riskThreshold: 80,
       extremeThreshold: 95,
-      dataSource: 'CFTC COT Report',
+      dataSource: cftcData.isManual
+        ? 'CFTC COT Report (手动配置)'
+        : 'CFTC COT Report (Perplexity Sonar)',
       updateFrequency: 'Weekly (Friday)',
-      lastUpdate: lastUpdated,
+      lastUpdate: cftcData.timestamp ?? lastUpdated,
       status: 'normal',
       score: 0,
       description: 'Tracks the net long positions of non-commercial traders (speculators) in S&P 500 (ES) and Nasdaq 100 (NQ) futures, measured as a percentile of historical positions. When net longs reach the 90th percentile or higher, it indicates extreme speculative positioning. Futures markets are often contrarian indicators - extreme crowding typically precedes reversals.',
@@ -314,7 +704,7 @@ export const fetchMacroIndicators = async (): Promise<MacroDashboardData> => {
       extremeThreshold: 0.50,
       dataSource: 'CBOE / Yahoo Finance',
       updateFrequency: 'Daily',
-      lastUpdate: lastUpdated,
+      lastUpdate: putCallRatio !== null ? realTimeTimestamp : lastUpdated,
       status: 'normal',
       score: 0,
       description: 'The ratio of put options to call options traded on CBOE. A low ratio (below 0.50) indicates excessive bullish sentiment - everyone is buying calls (betting on upside) and few are buying puts (protection). This is a classic sign of greed and complacency. When the ratio drops below 0.40, it often signals a market top as there is no one left to buy and no downside protection.',
@@ -332,7 +722,7 @@ export const fetchMacroIndicators = async (): Promise<MacroDashboardData> => {
       extremeThreshold: 115,
       dataSource: 'CBOE / Yahoo Finance',
       updateFrequency: 'Daily',
-      lastUpdate: lastUpdated,
+      lastUpdate: skew !== null ? realTimeTimestamp : lastUpdated,
       status: 'normal',
       score: 0,
       description: 'The SKEW index measures the perceived tail risk in the market based on S&P 500 option prices. Higher SKEW (typically 130+) indicates investors are pricing in tail risk (fear of extreme moves). Lower SKEW (below 115) suggests complacency - the market is not pricing in tail risks. When the market is at highs but SKEW is unusually low, it indicates investors have forgotten about downside risks, making the market vulnerable to black swan events.',
@@ -350,7 +740,7 @@ export const fetchMacroIndicators = async (): Promise<MacroDashboardData> => {
       extremeThreshold: 90,
       dataSource: 'Calculated from S&P 500 components',
       updateFrequency: 'Daily',
-      lastUpdate: lastUpdated,
+      lastUpdate: sp500Above50 !== null ? realTimeTimestamp : lastUpdated,
       status: 'normal',
       score: 0,
       description: 'The percentage of S&P 500 component stocks trading above their 50-day moving average. When this percentage exceeds 85-90%, it indicates that nearly all stocks are in uptrends, suggesting short-term momentum is exhausted. This is a technical sign of overextension - when everyone is already long, there are few buyers left to push prices higher.',
@@ -368,7 +758,7 @@ export const fetchMacroIndicators = async (): Promise<MacroDashboardData> => {
       extremeThreshold: 15,
       dataSource: 'Yahoo Finance',
       updateFrequency: 'Daily',
-      lastUpdate: lastUpdated,
+      lastUpdate: spy200Deviation !== null ? realTimeTimestamp : lastUpdated,
       status: 'normal',
       score: 0,
       description: 'Measures how far SPY (S&P 500 ETF) is trading above or below its 200-day moving average, expressed as a percentage. When SPY is more than 10% above the 200 DMA, it indicates the market is significantly extended from its long-term trend. Deviations above 15% are extreme and historically have often preceded corrections as prices revert toward the mean.',
@@ -386,7 +776,7 @@ export const fetchMacroIndicators = async (): Promise<MacroDashboardData> => {
       extremeThreshold: 11,
       dataSource: 'CBOE / Yahoo Finance',
       updateFrequency: 'Daily',
-      lastUpdate: lastUpdated,
+      lastUpdate: vix !== null ? realTimeTimestamp : lastUpdated,
       status: 'normal',
       score: 0,
       description: 'The VIX (CBOE Volatility Index) measures expected 30-day volatility based on S&P 500 option prices. Low VIX (below 13, especially below 11) indicates complacency and lack of fear in the market. While low volatility feels good, it often occurs at market tops when everyone is fully invested and no one expects a downturn. Historically, VIX below 11 has often preceded significant market corrections.',
@@ -419,11 +809,16 @@ export const fetchMacroIndicators = async (): Promise<MacroDashboardData> => {
     riskLevel = 'caution';
   }
   
-  return {
+  const result: MacroDashboardData = {
     indicators,
     totalScore: Math.round(totalScore * 10) / 10,
     riskLevel,
     lastUpdated,
   };
+  
+  // Save to cache after fetching fresh data
+  saveCachedMacroIndicators(result);
+  
+  return result;
 };
 

@@ -1,10 +1,11 @@
 import { Candle } from '../types';
 
 // Multiple CORS proxy options as fallback
+// Note: CORS proxies can be unreliable. If all fail, consider using a backend proxy server.
 const PROXY_OPTIONS = [
-  'https://api.allorigins.win/raw?url=',
   'https://corsproxy.io/?',
   'https://api.codetabs.com/v1/proxy?quest=',
+  'https://api.allorigins.win/raw?url=',
 ];
 
 const BASE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
@@ -18,27 +19,69 @@ const ALPHA_VANTAGE_BASE = 'https://www.alphavantage.co/query';
 const BINANCE_BASE = 'https://api.binance.com/api/v3';
 
 // Try fetching with multiple proxy options
-const fetchWithProxy = async (url: string, proxyIndex: number = 0): Promise<Response> => {
+export const fetchWithProxy = async (url: string, proxyIndex: number = 0): Promise<Response> => {
   if (proxyIndex >= PROXY_OPTIONS.length) {
     throw new Error('All proxy options failed');
   }
   
   try {
-    const proxyUrl = PROXY_OPTIONS[proxyIndex] + encodeURIComponent(url);
-    const response = await fetch(proxyUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Proxy ${proxyIndex} failed: ${response.status}`);
+    const proxy = PROXY_OPTIONS[proxyIndex];
+    // Different proxies have different URL formats
+    let proxyUrl: string;
+    if (proxy.includes('corsproxy.io') || proxy.includes('codetabs.com') || proxy.includes('allorigins.win')) {
+      proxyUrl = proxy + encodeURIComponent(url);
+    } else {
+      // Default: append URL directly
+      proxyUrl = proxy + url;
     }
     
-    return response;
-  } catch (error) {
-    console.warn(`Proxy ${proxyIndex} failed, trying next...`, error);
+    // Add timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    try {
+      const response = await fetch(proxyUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      // Check if response is ok
+      if (!response.ok) {
+        throw new Error(`Proxy ${proxyIndex} failed: ${response.status} ${response.statusText}`);
+      }
+      
+      // Check if response has valid content (not a CORS error page)
+      const contentType = response.headers.get('content-type');
+      if (contentType && !contentType.includes('application/json') && !contentType.includes('text/html')) {
+        throw new Error(`Proxy ${proxyIndex} returned invalid content type: ${contentType}`);
+      }
+      
+      return response;
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      
+      // Check if it's a CORS error, network error, or timeout
+      if (fetchError.name === 'AbortError') {
+        throw new Error(`Proxy ${proxyIndex} timeout`);
+      }
+      if (fetchError.message?.includes('CORS') || fetchError.message?.includes('Failed to fetch')) {
+        throw new Error(`Proxy ${proxyIndex} CORS/network error`);
+      }
+      throw fetchError;
+    }
+  } catch (error: any) {
+    // If this is the last proxy, throw the error
+    if (proxyIndex >= PROXY_OPTIONS.length - 1) {
+      throw error;
+    }
+    
+    // Otherwise, try next proxy
+    console.warn(`⚠️ Proxy ${proxyIndex} (${PROXY_OPTIONS[proxyIndex]}) failed, trying next...`, error.message);
     return fetchWithProxy(url, proxyIndex + 1);
   }
 };

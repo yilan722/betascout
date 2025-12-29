@@ -13,11 +13,11 @@ export const MacroDashboard: React.FC = () => {
   const [expandedIndicators, setExpandedIndicators] = useState<Set<string>>(new Set());
   const [scoreExplanationExpanded, setScoreExplanationExpanded] = useState(false);
 
-  const loadData = async () => {
+  const loadData = async (forceRefresh: boolean = false) => {
     setLoading(true);
     setError(null);
     try {
-      const dashboardData = await fetchMacroIndicators();
+      const dashboardData = await fetchMacroIndicators(forceRefresh);
       setData(dashboardData);
       setLastRefresh(new Date());
     } catch (err: any) {
@@ -29,10 +29,10 @@ export const MacroDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    loadData();
-    // Auto-refresh every 5 minutes
-    const interval = setInterval(loadData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    // Load data on mount (will use cache if available and fresh)
+    loadData(false);
+    // Note: No auto-refresh interval - data is cached for 24 hours
+    // Users can manually refresh if needed
   }, []);
 
   const getCategoryIcon = (category: string) => {
@@ -142,10 +142,10 @@ export const MacroDashboard: React.FC = () => {
     return (
       <div className="w-full bg-slate-900/50 rounded-lg p-6 border border-slate-800">
         <div className="text-red-400 text-sm">{error}</div>
-        <button
-          onClick={loadData}
-          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-        >
+          <button
+            onClick={() => loadData(true)}
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+          >
           {language === 'zh' ? '重试' : 'Retry'}
         </button>
       </div>
@@ -175,12 +175,13 @@ export const MacroDashboard: React.FC = () => {
             </h3>
           </div>
           <button
-            onClick={loadData}
+            onClick={() => loadData(true)}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 text-xs disabled:opacity-50"
+            title={language === 'zh' ? '强制刷新（将调用 Perplexity API）' : 'Force refresh (will call Perplexity API)'}
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            {language === 'zh' ? '刷新' : 'Refresh'}
+            {language === 'zh' ? '强制刷新' : 'Force Refresh'}
           </button>
         </div>
 
@@ -428,10 +429,38 @@ export const MacroDashboard: React.FC = () => {
                             <span className="text-red-400">{indicator.extremeThreshold}{indicator.unit}</span>
                           </div>
                         </div>
-                        <div className="mt-2 text-[10px] text-slate-500">
-                          {language === 'zh' 
-                            ? `数据源: ${indicator.dataSource} | 更新频率: ${indicator.updateFrequency}`
-                            : `Source: ${indicator.dataSource} | Frequency: ${indicator.updateFrequency}`}
+                        <div className="mt-2 text-[10px] text-slate-500 space-y-1">
+                          <div>
+                            {language === 'zh' 
+                              ? `数据源: ${indicator.dataSource} | 更新频率: ${indicator.updateFrequency}`
+                              : `Source: ${indicator.dataSource} | Frequency: ${indicator.updateFrequency}`}
+                          </div>
+                          <div className={indicator.value === null ? 'text-yellow-400' : 'text-slate-400'}>
+                            {language === 'zh' 
+                              ? `数据获取时间: ${new Date(indicator.lastUpdate).toLocaleString('zh-CN', { 
+                                  year: 'numeric', 
+                                  month: '2-digit', 
+                                  day: '2-digit', 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })}`
+                              : `Data fetched: ${new Date(indicator.lastUpdate).toLocaleString('en-US', { 
+                                  year: 'numeric', 
+                                  month: '2-digit', 
+                                  day: '2-digit', 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })}`}
+                            {indicator.value === null ? (
+                              <span className="ml-2 text-yellow-400">
+                                ({language === 'zh' ? '数据不可用 - 请在 macroDataConfig.ts 中更新' : 'Data unavailable - Please update in macroDataConfig.ts'})
+                              </span>
+                            ) : indicator.dataSource.includes('手动配置') || indicator.dataSource.includes('Manual') ? (
+                              <span className="ml-2 text-blue-400">
+                                ({language === 'zh' ? '手动配置' : 'Manual config'})
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                         
                         {/* Detailed Description */}

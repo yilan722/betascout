@@ -134,8 +134,13 @@ const App: React.FC = () => {
       if (!currentAsset || currentAsset.category !== selectedCategory) {
         // Filter assets by category first
         const categoryAssets = assets.filter(a => a.category === selectedCategory);
+        console.log(`[Category Effect] Selected category: ${selectedCategory}, Found ${categoryAssets.length} assets in this category`);
         if (categoryAssets.length > 0) {
+          console.log(`[Category Effect] Auto-selecting first asset: ${categoryAssets[0].id} (${categoryAssets[0].symbol})`);
           setSelectedAssetId(categoryAssets[0].id);
+        } else {
+          console.warn(`[Category Effect] No assets found in category "${selectedCategory}". Available categories:`, 
+            Array.from(new Set(assets.map(a => a.category))));
         }
       }
     } else {
@@ -194,38 +199,61 @@ const App: React.FC = () => {
     return 'neutral';
   };
 
-  // Filter assets by category and search query
+  // Filter assets by category and search query - optimized for performance
   const filteredAssets = useMemo(() => {
     let filtered = assets;
     
     // Filter by category - ensure strict comparison
     if (selectedCategory !== 'ALL') {
       const beforeCount = filtered.length;
+      
+      // Debug: Log category types and values
+      console.log(`[Filter] Filtering by category: "${selectedCategory}" (type: ${typeof selectedCategory})`);
+      console.log(`[Filter] Total assets before filter: ${beforeCount}`);
+      
+      // Get unique categories from assets for debugging
+      const uniqueCategories = Array.from(new Set(assets.map(a => a.category)));
+      console.log(`[Filter] Available categories in assets:`, uniqueCategories);
+      
+      // Sample a few assets to see their categories
+      const sampleAssets = assets.slice(0, 5).map(a => ({ id: a.id, symbol: a.symbol, category: a.category, categoryType: typeof a.category }));
+      console.log(`[Filter] Sample assets:`, sampleAssets);
+      
       filtered = filtered.filter(a => {
-        // Ensure we're comparing the same type
-        const assetCategory = String(a.category);
-        const selectedCat = String(selectedCategory);
-        return assetCategory === selectedCat;
+        const matches = a.category === selectedCategory;
+        if (!matches) {
+          // Log first few mismatches for debugging
+          console.log(`[Filter] Mismatch - Asset ${a.id} (${a.symbol}): category="${a.category}" (type: ${typeof a.category}) !== selected="${selectedCategory}" (type: ${typeof selectedCategory})`);
+        }
+        return matches;
       });
       
-      // Debug logging
-      console.log(`[Filter] Selected category: "${selectedCategory}"`);
-      console.log(`[Filter] Total assets: ${beforeCount}, Filtered: ${filtered.length}`);
-      if (filtered.length === 0 && beforeCount > 0) {
-        // Log sample assets to see what categories we have
-        const sampleCategories = assets.slice(0, 10).map(a => `${a.id}: ${a.category}`);
-        console.log(`[Filter] Sample asset categories:`, sampleCategories);
+      const afterCount = filtered.length;
+      console.log(`[Filter] Assets after category filter: ${afterCount}`);
+      
+      if (afterCount === 0 && beforeCount > 0) {
+        console.warn(`[Filter] ⚠️ No assets found in category "${selectedCategory}"!`);
+        console.warn(`[Filter] Available categories:`, uniqueCategories);
       }
+    } else {
+      console.log(`[Filter] Showing all assets (${assets.length} total)`);
     }
     
     // Filter by search query (case-insensitive search in symbol, name, and id)
     if (searchQuery.trim()) {
       const query = searchQuery.trim().toLowerCase();
-      filtered = filtered.filter(a => 
-        a.symbol.toLowerCase().includes(query) ||
-        a.name.toLowerCase().includes(query) ||
-        a.id.toLowerCase().includes(query)
-      );
+      const beforeSearch = filtered.length;
+      // Pre-compute lowercase values for better performance
+      filtered = filtered.filter(a => {
+        const symbolLower = a.symbol.toLowerCase();
+        const nameLower = a.name.toLowerCase();
+        const idLower = a.id.toLowerCase();
+        return symbolLower.includes(query) || nameLower.includes(query) || idLower.includes(query);
+      });
+      console.log(`[Filter] After search "${searchQuery}": ${filtered.length} assets (from ${beforeSearch})`);
+      if (filtered.length > 0) {
+        console.log(`[Filter] Found assets:`, filtered.map(a => ({ id: a.id, symbol: a.symbol, name: a.name })));
+      }
     }
     
     return filtered;
@@ -274,23 +302,7 @@ const App: React.FC = () => {
               placeholder={language === 'zh' ? '搜索代码/名称...' : 'Search ticker/name...'}
               value={searchQuery}
               onChange={(e) => {
-                const newQuery = e.target.value;
-                setSearchQuery(newQuery);
-                
-                // Auto-select first result if only one match
-                const query = newQuery.trim().toLowerCase();
-                if (query) {
-                  const matches = assets.filter(a => {
-                    const categoryMatch = selectedCategory === 'ALL' || a.category === selectedCategory;
-                    const searchMatch = a.symbol.toLowerCase().includes(query) ||
-                                      a.name.toLowerCase().includes(query) ||
-                                      a.id.toLowerCase().includes(query);
-                    return categoryMatch && searchMatch;
-                  });
-                  if (matches.length === 1) {
-                    setSelectedAssetId(matches[0].id);
-                  }
-                }
+                setSearchQuery(e.target.value);
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && filteredAssets.length > 0) {
@@ -329,7 +341,9 @@ const App: React.FC = () => {
                         // Clear search when switching category
                         setSearchQuery('');
                         // Update category - the useEffect will handle auto-selecting the first asset
-                        setSelectedCategory(cat as AssetCategory | 'ALL');
+                        const newCategory = cat as AssetCategory | 'ALL';
+                        console.log(`[Category Click] Switching to category: ${newCategory}`);
+                        setSelectedCategory(newCategory);
                     }}
                     className={`text-[10px] py-1 px-1 rounded truncate transition-colors ${
                         selectedCategory === cat 
@@ -351,7 +365,18 @@ const App: React.FC = () => {
 
         {/* Asset List */}
         <div className="flex-1 overflow-y-auto">
-            {isLoading ? (
+            {(() => {
+              // Debug: Log render state
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`[Render] isLoading: ${isLoading}, filteredAssets.length: ${filteredAssets.length}, searchQuery: "${searchQuery}"`);
+                if (filteredAssets.length > 0) {
+                  console.log(`[Render] Filtered assets:`, filteredAssets.map(a => ({ id: a.id, symbol: a.symbol, name: a.name })));
+                }
+              }
+              return null;
+            })()}
+            {/* Show loading only if no search query and no filtered results */}
+            {isLoading && !searchQuery && filteredAssets.length === 0 ? (
                 <div className="p-4 text-center text-slate-500 text-sm">{t.status.loadingMarketData}</div>
             ) : filteredAssets.length === 0 ? (
                 <div className="p-4 text-center">
@@ -383,6 +408,12 @@ const App: React.FC = () => {
                 </div>
             ) : (
                 <>
+                    {/* Show loading indicator at top if still loading but have search results */}
+                    {isLoading && searchQuery && (
+                        <div className="p-2 text-center text-slate-500 text-xs border-b border-slate-800">
+                            {t.status.loadingMarketData}
+                        </div>
+                    )}
                     {filteredAssets.map(asset => (
                         <AssetCard 
                             key={asset.id}
