@@ -23,6 +23,12 @@ interface IndicatorChartProps {
   height?: number;
 }
 
+interface OrderbookImbalanceChartProps {
+  symbol?: string; // Asset symbol for independent data fetching
+  yahooSymbol?: string; // Yahoo Finance symbol format
+  data?: IndicatorData[]; // Optional: use provided data if available
+}
+
 const CustomTooltip = ({ active, payload, label }: any) => {
   const { t, language } = useTranslation();
   if (active && payload && payload.length && payload[0].payload) {
@@ -1039,6 +1045,863 @@ export const LatentEnergyChart: React.FC<IndicatorChartProps> = ({ data }) => {
             stroke="#06b6d4"
             tick={{fontSize: 10, fill: '#06b6d4'}}
             width={50}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+// Indicator 4: SCF Orderbook Imbalance Chart
+export const OrderbookImbalanceChart: React.FC<OrderbookImbalanceChartProps> = ({ symbol, yahooSymbol, data: providedData }) => {
+  const { t, language } = useTranslation();
+  const [orderbookTimeframe, setOrderbookTimeframe] = React.useState<'15m' | '1m'>('15m');
+  const [orderbookData, setOrderbookData] = React.useState<IndicatorData[]>([]);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  
+  // Use provided data if available, otherwise use loaded data
+  const data = providedData && providedData.length > 0 ? providedData : orderbookData;
+  
+  // Filter data that has orderbook data
+  const hasOrderbookData = data.some(d => d.hasOrderbookData);
+  
+  // Calculate time ticks - MUST be before any conditional returns
+  const timeTicks = useMemo(() => {
+    if (data.length === 0) return [];
+    const ticks: string[] = [];
+    const totalPoints = data.length;
+    const numTicks = Math.min(8, Math.max(3, Math.floor(totalPoints / 40)));
+    
+    if (totalPoints > 1) {
+      const firstTime = new Date(data[0].time).getTime();
+      const lastTime = new Date(data[totalPoints - 1].time).getTime();
+      const timeRange = lastTime - firstTime;
+      
+      ticks.push(data[0].time);
+      
+      for (let i = 1; i < numTicks - 1; i++) {
+        const targetTime = firstTime + (timeRange * i / (numTicks - 1));
+        let closestIndex = 0;
+        let minDiff = Infinity;
+        for (let j = 0; j < totalPoints; j++) {
+          const diff = Math.abs(new Date(data[j].time).getTime() - targetTime);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestIndex = j;
+          }
+        }
+        if (data[closestIndex]?.time && !ticks.includes(data[closestIndex].time)) {
+          ticks.push(data[closestIndex].time);
+        }
+      }
+      
+      if (data[totalPoints - 1]?.time && !ticks.includes(data[totalPoints - 1].time)) {
+        ticks.push(data[totalPoints - 1].time);
+      }
+    }
+    
+    ticks.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    return ticks;
+  }, [data]);
+  
+  // Prepare chart data with color coding - MUST be before any conditional returns
+  const chartData = useMemo(() => {
+    return data.map(d => ({
+      ...d,
+      // Color: green if positive delta (more bids), red if negative delta (more asks) - like CoinGlass
+      color: d.orderbookDelta !== undefined && d.orderbookDelta > 0 ? '#10b981' : '#ef4444',
+    }));
+  }, [data]);
+  
+  // Load orderbook data independently when timeframe or symbol changes
+  React.useEffect(() => {
+    if (!yahooSymbol || !symbol) return;
+    
+    const loadOrderbookData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        // Import analyzeAsset dynamically to avoid circular dependency
+        const { analyzeAsset } = await import('../services/dataService');
+        const result = await analyzeAsset(symbol, orderbookTimeframe);
+        setOrderbookData(result.indicators);
+      } catch (err: any) {
+        console.error('Failed to load orderbook data:', err);
+        
+        // Check if it's a K-line data fetch error (network issue)
+        // Even if K-line fails, we can still show current orderbook data
+        if (err.message?.includes('Failed to fetch') || err.message?.includes('fetch')) {
+          // Try to load just the current orderbook snapshot
+          try {
+            const { loadOrderbookHistory, getAggregatedOrderbookHistory } = await import('../services/orderbookStorage');
+            
+            // Get historical data from storage
+            const history = getAggregatedOrderbookHistory(yahooSymbol, orderbookTimeframe, orderbookTimeframe === '15m' ? 24 : 12);
+            
+            if (history.length > 0) {
+              // We have some historical data
+              const minimalData: IndicatorData[] = history.map(entry => ({
+                time: new Date(entry.timestamp).toISOString(),
+                price: entry.price,
+                open: entry.price,
+                high: entry.price,
+                low: entry.price,
+                close: entry.price,
+                rsi: 50,
+                ema20: entry.price,
+                atr: 0,
+                lowerAtrBand: entry.price,
+                upperAtrBand: entry.price,
+                isOversold1: false,
+                isOverbought1: false,
+                rsiLevel: 'neutral',
+                rsiTrend: 'neutral',
+                aggScore: 0,
+                aggLowerBand: 0,
+                aggUpperBand: 0,
+                isOversold2: false,
+                isOverbought2: false,
+                buySignal: false,
+                strongBuySignal: false,
+                latentEnergy: 0,
+                rangeTop: 0,
+                rangeBottom: 0,
+                rangePhase: 'none',
+                breakoutDirection: 'none',
+                breakoutConfidence: 0,
+                breakoutQuality: 0,
+                isNewZone: false,
+                isImminentBreakout: false,
+                isBreakoutUp: false,
+                isBreakoutDown: false,
+                orderbookImbalance: entry.imbalance,
+                orderbookDelta: entry.delta || 0,
+                orderbookMaRatio: entry.imbalance,
+                orderbookOscillator: 0,
+                orderbookBaseline: 0,
+                hasOrderbookData: true,
+              }));
+              
+              // Calculate MA and oscillator if we have enough data
+              if (minimalData.length >= 13) {
+                const { calculateSMA } = await import('../utils/math');
+                const ratios = minimalData.map(d => d.orderbookImbalance || 0);
+                const maRatios = calculateSMA(ratios, 13);
+                minimalData.forEach((d, i) => {
+                  d.orderbookMaRatio = maRatios[i] || d.orderbookImbalance || 0;
+                  d.orderbookOscillator = (d.orderbookImbalance || 0) - (maRatios[i] || 0);
+                });
+              }
+              
+              setOrderbookData(minimalData);
+              setError(null);
+            } else {
+              // No historical data yet
+              const dataCount = loadOrderbookHistory(yahooSymbol).length;
+              if (dataCount === 0) {
+                setError(`K线数据获取失败，且订单簿历史数据为空。请等待采样服务积累数据（约需${orderbookTimeframe === '15m' ? '15分钟' : '1分钟'}）。`);
+              } else {
+                setError(`K线数据获取失败，但已有${dataCount}个订单簿快照。数据正在处理中...`);
+              }
+              setOrderbookData([]);
+            }
+          } catch (storageErr: any) {
+            setError(`K线数据获取失败: ${err.message}。同时无法加载历史订单簿数据。`);
+            setOrderbookData([]);
+          }
+        } else {
+          setError(err.message || 'Failed to load orderbook data');
+          setOrderbookData([]);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadOrderbookData();
+  }, [yahooSymbol, symbol, orderbookTimeframe]);
+  
+  if (!yahooSymbol || !symbol) {
+    return (
+      <div className="w-full h-[250px] bg-[#0f172a] rounded-lg p-4 border border-slate-800 mt-4 relative">
+        <h4 className="text-slate-400 text-xs uppercase font-bold mb-2">
+          {language === 'zh' ? '订单簿不平衡 (SCF Orderbook Imbalance)' : 'SCF Orderbook Imbalance'}
+        </h4>
+        <div className="flex items-center justify-center h-full text-slate-500">
+          <p className="text-sm">
+            {language === 'zh' 
+              ? '订单簿数据仅适用于加密货币标的（BTC/ETH等）' 
+              : 'Orderbook data is only available for crypto assets (BTC/ETH, etc.)'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (isLoading) {
+    return (
+      <div className="w-full h-[300px] bg-[#0f172a] rounded-lg p-4 border border-slate-800 mt-4 relative">
+        <h4 className="text-slate-400 text-xs uppercase font-bold mb-2">
+          {language === 'zh' ? '订单簿不平衡 (SCF Orderbook Imbalance)' : 'SCF Orderbook Imbalance'}
+        </h4>
+        <div className="flex items-center justify-center h-full text-slate-500">
+          <p className="text-sm">{language === 'zh' ? '加载中...' : 'Loading...'}</p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (error || !hasOrderbookData) {
+    return (
+      <div className="w-full h-[300px] bg-[#0f172a] rounded-lg p-4 border border-slate-800 mt-4 relative">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-slate-400 text-xs uppercase font-bold">
+            {language === 'zh' ? '订单簿不平衡 (SCF Orderbook Imbalance)' : 'SCF Orderbook Imbalance'}
+          </h4>
+          {/* Timeframe selector */}
+          <div className="flex bg-slate-800 rounded-lg p-1 gap-1">
+            <button 
+              onClick={() => setOrderbookTimeframe('15m')}
+              className={`px-2 py-1 text-xs font-bold rounded transition-colors ${
+                orderbookTimeframe === '15m' 
+                ? 'bg-blue-600 text-white shadow' 
+                : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              15m
+            </button>
+            <button 
+              onClick={() => setOrderbookTimeframe('1m')}
+              className={`px-2 py-1 text-xs font-bold rounded transition-colors ${
+                orderbookTimeframe === '1m' 
+                ? 'bg-blue-600 text-white shadow' 
+                : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              1m
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-col items-center justify-center h-full text-slate-500">
+          <p className="text-sm mb-2 text-center px-4">
+            {error 
+              ? (language === 'zh' ? `⚠️ ${error}` : `⚠️ ${error}`)
+              : (language === 'zh' 
+                  ? `请选择15m或1m时间周期查看历史数据。数据正在积累中...` 
+                  : 'Please select 15m or 1m timeframe to view historical data. Data is being collected...')}
+          </p>
+          {!error && (
+            <div className="text-xs text-slate-600 space-y-1 text-center px-4">
+              <p>
+                {language === 'zh' 
+                  ? '📊 数据积累时间：' 
+                  : '📊 Data accumulation time:'}
+              </p>
+              <p>
+                {language === 'zh' 
+                  ? '• 15m周期：约需15-30分钟积累足够数据' 
+                  : '• 15m timeframe: ~15-30 minutes to accumulate enough data'}
+              </p>
+              <p>
+                {language === 'zh' 
+                  ? '• 1m周期：约需1-5分钟积累足够数据' 
+                  : '• 1m timeframe: ~1-5 minutes to accumulate enough data'}
+              </p>
+              <p className="mt-2 text-slate-500">
+                {language === 'zh' 
+                  ? '💡 提示：应用会自动每分钟采样订单簿数据' 
+                  : '💡 Tip: The app automatically samples orderbook data every minute'}
+              </p>
+            </div>
+          )}
+          {error && error.includes('K线数据获取失败') && (
+            <div className="text-xs text-slate-600 space-y-1 text-center px-4 mt-2">
+              <p>
+                {language === 'zh' 
+                  ? '可能原因：' 
+                  : 'Possible causes:'}
+              </p>
+              <p>
+                {language === 'zh' 
+                  ? '1. 网络连接问题 - 请检查网络连接' 
+                  : '1. Network issue - Please check your connection'}
+              </p>
+              <p>
+                {language === 'zh' 
+                  ? '2. Binance API限制 - 请稍后重试' 
+                  : '2. Binance API restriction - Please try again later'}
+              </p>
+              <p className="mt-2 text-slate-500">
+                {language === 'zh' 
+                  ? '💡 即使K线数据获取失败，订单簿历史数据仍会继续积累' 
+                  : '💡 Even if K-line data fetch fails, orderbook history will continue to accumulate'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="w-full h-[300px] bg-[#0f172a] rounded-lg p-4 border border-slate-800 mt-4 relative">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-slate-400 text-xs uppercase font-bold">
+          {language === 'zh' ? '订单簿不平衡 (SCF Orderbook Imbalance)' : 'SCF Orderbook Imbalance'}
+        </h4>
+        <div className="flex items-center gap-2">
+          {/* Timeframe selector */}
+          <div className="flex bg-slate-800 rounded-lg p-1 gap-1">
+            <button 
+              onClick={() => setOrderbookTimeframe('15m')}
+              className={`px-2 py-1 text-xs font-bold rounded transition-colors ${
+                orderbookTimeframe === '15m' 
+                ? 'bg-blue-600 text-white shadow' 
+                : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              15m
+            </button>
+            <button 
+              onClick={() => setOrderbookTimeframe('1m')}
+              className={`px-2 py-1 text-xs font-bold rounded transition-colors ${
+                orderbookTimeframe === '1m' 
+                ? 'bg-blue-600 text-white shadow' 
+                : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              1m
+            </button>
+          </div>
+          {/* Status indicator - show Delta like CoinGlass */}
+          {data.length > 0 && (() => {
+            const latest = data[data.length - 1];
+            if (latest.hasOrderbookData && latest.orderbookDelta !== undefined) {
+              const isPositive = latest.orderbookDelta > 0;
+              const deltaValue = latest.orderbookDelta;
+              const absValue = Math.abs(deltaValue);
+              // Format as millions if >= 1M, otherwise as thousands
+              const formattedValue = absValue >= 1000000 
+                ? `${(deltaValue / 1000000).toFixed(2)}M`
+                : `${(deltaValue / 1000).toFixed(2)}K`;
+              return (
+                <div 
+                  className="px-3 py-1.5 rounded border-2 text-xs font-bold"
+                  style={{ 
+                    backgroundColor: isPositive ? '#10b981' : '#ef4444',
+                    borderColor: isPositive ? '#10b981' : '#ef4444',
+                    color: '#ffffff'
+                  }}
+                >
+                  <div>{language === 'zh' ? 'Delta' : 'Delta'}</div>
+                  <div className="text-right">
+                    {isPositive ? '+' : '-'}${formattedValue}
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height="100%" minHeight={250}>
+        <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis 
+            dataKey="time" 
+            stroke="#475569" 
+            tick={{fontSize: 10, fill: '#94a3b8'}} 
+            tickFormatter={(val) => {
+              if (!val) return '';
+              const date = new Date(val);
+              if (isNaN(date.getTime())) return val;
+              // For intraday timeframes, show time with date
+              if (orderbookTimeframe === '15m' || orderbookTimeframe === '1m') {
+                return date.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', { 
+                  month: 'short', 
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+              }
+              return date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', year: 'numeric' });
+            }}
+            ticks={timeTicks}
+            angle={-45}
+            textAnchor="end"
+            height={60}
+            interval={0}
+          />
+          <YAxis 
+            domain={['auto', 'auto']} 
+            stroke="#475569" 
+            tick={{fontSize: 10}}
+            width={40}
+          />
+          <Tooltip 
+            content={({ active, payload, label }: any) => {
+              if (!active || !payload || !payload.length) return null;
+              const d = payload[0]?.payload as IndicatorData;
+              if (!d || !d.hasOrderbookData) return null;
+              
+              const date = new Date(label);
+              const formattedDate = isNaN(date.getTime()) ? label : 
+                (orderbookTimeframe === '15m' || orderbookTimeframe === '1m')
+                  ? date.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', { 
+                      year: 'numeric', 
+                      month: 'short', 
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })
+                  : date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { 
+                      year: 'numeric', 
+                      month: 'short', 
+                      day: 'numeric' 
+                    });
+              
+              return (
+                <div className="bg-slate-900 border border-slate-700 p-3 rounded shadow-xl text-xs">
+                  <p className="text-slate-400 mb-1">{formattedDate}</p>
+                  <div className="space-y-1">
+                    {d.orderbookImbalance !== undefined && (
+                      <p className="text-cyan-400">
+                        {language === 'zh' ? '不平衡比率' : 'Imbalance Ratio'}: {d.orderbookImbalance.toFixed(4)}
+                      </p>
+                    )}
+                    {d.orderbookMaRatio !== undefined && (
+                      <p className="text-blue-400">
+                        {language === 'zh' ? '移动平均' : 'MA Ratio'}: {d.orderbookMaRatio.toFixed(4)}
+                      </p>
+                    )}
+                    {d.orderbookDelta !== undefined && (
+                      <p className={d.orderbookDelta > 0 ? 'text-green-400' : 'text-red-400'}>
+                        {language === 'zh' ? 'Delta (美元)' : 'Delta (USD)'}: ${(d.orderbookDelta / 1000000).toFixed(2)}M
+                      </p>
+                    )}
+                    {d.orderbookOscillator !== undefined && (
+                      <p className={d.orderbookOscillator > 0 ? 'text-yellow-400' : 'text-orange-400'}>
+                        {language === 'zh' ? '振荡器' : 'Oscillator'}: {d.orderbookOscillator.toFixed(4)}
+                      </p>
+                    )}
+                    <p className="text-slate-500 text-xs mt-2">
+                      {language === 'zh' 
+                        ? `数据来源：Binance订单簿（${orderbookTimeframe}周期，1%深度）` 
+                        : `Data source: Binance orderbook (${orderbookTimeframe} timeframe, 1% depth)`}
+                    </p>
+                  </div>
+                </div>
+              );
+            }}
+          />
+          
+          <ReferenceLine y={0} stroke="#64748b" strokeDasharray="3 3" strokeOpacity={0.5} />
+          
+          {/* Bar chart for Delta (like CoinGlass) - shows absolute USD value */}
+          <Bar
+            dataKey="orderbookDelta"
+            name={language === 'zh' ? 'Delta (美元)' : 'Delta (USD)'}
+            radius={[4, 4, 0, 0]}
+            isAnimationActive={false}
+          >
+            {chartData.map((entry, index) => (
+              <Cell 
+                key={`cell-${index}`} 
+                fill={entry.hasOrderbookData && entry.orderbookDelta !== undefined 
+                  ? (entry.orderbookDelta > 0 ? '#10b981' : '#ef4444')
+                  : 'transparent'
+                } 
+              />
+            ))}
+          </Bar>
+          
+          {/* Baseline (always 0) */}
+          <Line 
+            type="monotone" 
+            dataKey="orderbookBaseline" 
+            stroke="#64748b" 
+            strokeWidth={1} 
+            strokeDasharray="2 2"
+            dot={false}
+            name={language === 'zh' ? '基准线' : 'Baseline'}
+            strokeOpacity={0.5}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+// Indicator 5: Triple Lines Supertrend Chart
+export const SupertrendChart: React.FC<IndicatorChartProps> = ({ data }) => {
+  const { t, language } = useTranslation();
+  
+  // Filter signals - touching any Supertrend line
+  const touching1Signals = data.filter(d => d.supertrendTouching1);
+  const touching2Signals = data.filter(d => d.supertrendTouching2);
+  const touching3Signals = data.filter(d => d.supertrendTouching3);
+  
+  // Calculate time ticks
+  const timeTicks = useMemo(() => {
+    if (data.length === 0) return [];
+    const ticks: string[] = [];
+    const totalPoints = data.length;
+    const numTicks = Math.min(8, Math.max(3, Math.floor(totalPoints / 40)));
+    
+    if (totalPoints > 1) {
+      const firstTime = new Date(data[0].time).getTime();
+      const lastTime = new Date(data[totalPoints - 1].time).getTime();
+      const timeRange = lastTime - firstTime;
+      
+      ticks.push(data[0].time);
+      
+      for (let i = 1; i < numTicks - 1; i++) {
+        const targetTime = firstTime + (timeRange * i / (numTicks - 1));
+        let closestIndex = 0;
+        let minDiff = Infinity;
+        for (let j = 0; j < totalPoints; j++) {
+          const diff = Math.abs(new Date(data[j].time).getTime() - targetTime);
+          if (diff < minDiff) {
+            minDiff = diff;
+            closestIndex = j;
+          }
+        }
+        if (data[closestIndex]?.time && !ticks.includes(data[closestIndex].time)) {
+          ticks.push(data[closestIndex].time);
+        }
+      }
+      
+      if (data[totalPoints - 1]?.time && !ticks.includes(data[totalPoints - 1].time)) {
+        ticks.push(data[totalPoints - 1].time);
+      }
+    }
+    
+    ticks.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    return ticks;
+  }, [data]);
+  
+  // Prepare chart data with Supertrend lines and candlesticks
+  const chartData = useMemo(() => {
+    return data.map((d, index) => ({
+      ...d,
+      // For drawing candlesticks
+      highWickTop: d.high,
+      highWickBottom: Math.max(d.open, d.close),
+      lowWickTop: Math.min(d.open, d.close),
+      lowWickBottom: d.low,
+      bodyTop: Math.max(d.open, d.close),
+      bodyBottom: Math.min(d.open, d.close),
+      bodyHeight: Math.abs(d.open - d.close),
+      isGreen: d.close >= d.open,
+      // Show ST1, ST2, ST3 values - separate up/down for color coding
+      st1Up: d.supertrendTrend1 === 1 && d.supertrend1 !== undefined ? d.supertrend1 : null,
+      st1Down: d.supertrendTrend1 === -1 && d.supertrend1 !== undefined ? d.supertrend1 : null,
+      st2Up: d.supertrendTrend2 === 1 && d.supertrend2 !== undefined ? d.supertrend2 : null,
+      st2Down: d.supertrendTrend2 === -1 && d.supertrend2 !== undefined ? d.supertrend2 : null,
+      st3Up: d.supertrendTrend3 === 1 && d.supertrend3 !== undefined ? d.supertrend3 : null,
+      st3Down: d.supertrendTrend3 === -1 && d.supertrend3 !== undefined ? d.supertrend3 : null,
+    }));
+  }, [data]);
+  
+  // Calculate price range for proper scaling
+  const priceRange = useMemo(() => {
+    const prices = data.flatMap(d => [d.high, d.low, d.open, d.close]).filter(p => typeof p === 'number' && !isNaN(p));
+    if (prices.length === 0) return { min: 0, max: 100, range: 100 };
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    return { min, max, range: max - min };
+  }, [data]);
+  
+  return (
+    <div className="w-full h-[350px] bg-[#0f172a] rounded-lg p-4 border border-slate-800 mt-4 relative">
+      <h4 className="text-slate-400 text-xs uppercase font-bold mb-2">
+        {language === 'zh' ? '超级趋势 (Triple Lines Supertrend)' : 'Triple Lines Supertrend'}
+      </h4>
+      <ResponsiveContainer width="100%" height="100%" minHeight={300}>
+        <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis 
+            dataKey="time" 
+            stroke="#475569" 
+            tick={{fontSize: 10, fill: '#94a3b8'}} 
+            tickFormatter={(val) => {
+              if (!val) return '';
+              const date = new Date(val);
+              if (isNaN(date.getTime())) return val;
+              return date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', year: 'numeric' });
+            }}
+            ticks={timeTicks}
+            angle={-45}
+            textAnchor="end"
+            height={60}
+            interval={0}
+          />
+          <YAxis 
+            domain={['auto', 'auto']} 
+            stroke="#475569" 
+            tick={{fontSize: 10}}
+            width={40}
+          />
+          <Tooltip 
+            content={({ active, payload, label }: any) => {
+              if (!active || !payload || !payload.length) return null;
+              const d = payload[0]?.payload as IndicatorData;
+              if (!d) return null;
+              
+              const date = new Date(label);
+              const formattedDate = isNaN(date.getTime()) ? label : date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+              });
+              
+              return (
+                <div className="bg-slate-900 border border-slate-700 p-3 rounded shadow-xl text-xs">
+                  <p className="text-slate-400 mb-1">{formattedDate}</p>
+                  <div className="space-y-1">
+                    <p className="text-slate-300">
+                      {language === 'zh' ? '价格' : 'Price'}: {d.close.toFixed(2)}
+                    </p>
+                    {d.supertrend1 !== undefined && (
+                      <p className={d.supertrendTrend1 === 1 ? 'text-green-400' : 'text-red-400'}>
+                        ST1 ({d.supertrendTrend1 === 1 ? '↑' : '↓'}): {d.supertrend1.toFixed(2)}
+                      </p>
+                    )}
+                    {d.supertrend2 !== undefined && (
+                      <p className={d.supertrendTrend2 === 1 ? 'text-green-400' : 'text-orange-400'}>
+                        ST2 ({d.supertrendTrend2 === 1 ? '↑' : '↓'}): {d.supertrend2.toFixed(2)}
+                      </p>
+                    )}
+                    {d.supertrend3 !== undefined && (
+                      <p className={d.supertrendTrend3 === 1 ? 'text-yellow-400' : 'text-cyan-400'}>
+                        ST3 ({d.supertrendTrend3 === 1 ? '↑' : '↓'}): {d.supertrend3.toFixed(2)}
+                      </p>
+                    )}
+                    {d.supertrendAlertLevel !== undefined && d.supertrendAlertLevel > 0 && (
+                      <p className={`font-bold ${
+                        d.supertrendAlertLevel === 3 ? 'text-red-500' :
+                        d.supertrendAlertLevel === 2 ? 'text-orange-500' :
+                        'text-yellow-500'
+                      }`}>
+                        {language === 'zh' ? '预警级别' : 'Alert Level'}: {d.supertrendAlertLevel}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            }}
+          />
+          
+          {/* Use Line components to set the price range for proper scaling */}
+          <Line 
+            type="monotone"
+            dataKey="high"
+            stroke="transparent"
+            strokeWidth={0}
+            dot={false}
+            name="High"
+          />
+          <Line 
+            type="monotone"
+            dataKey="low"
+            stroke="transparent"
+            strokeWidth={0}
+            dot={false}
+            name="Low"
+          />
+          
+          {/* Draw candlesticks using Scatter with custom shapes - render first so they appear behind Supertrend lines */}
+          <Scatter 
+            data={chartData}
+            shape={(props: any) => {
+              const { cx, cy, payload } = props;
+              if (!payload || !cx || !cy || isNaN(cx) || isNaN(cy)) return null;
+              
+              const { open, high, low, close, isGreen } = payload;
+              if (!open || !close || !high || !low) return null;
+              if (isNaN(open) || isNaN(close) || isNaN(high) || isNaN(low)) return null;
+              
+              const color = isGreen ? '#10b981' : '#ef4444';
+              const candleWidth = 10; // Increased width for better visibility
+              const halfWidth = candleWidth / 2;
+              
+              // Calculate scale factor based on price range
+              const scaleFactor = priceRange.range > 0 ? (300 / priceRange.range) * 0.8 : 1;
+              
+              // Calculate pixel positions
+              const highY = cy - (high - close) * scaleFactor;
+              const lowY = cy + (close - low) * scaleFactor;
+              const openY = cy - (close - open) * scaleFactor;
+              const closeY = cy;
+              
+              const bodyTop = Math.min(openY, closeY);
+              const bodyBottom = Math.max(openY, closeY);
+              const bodyHeight = Math.max(3, Math.abs(openY - closeY)); // Minimum height of 3px
+              
+              return (
+                <g key={`candle-${payload.time}`}>
+                  {/* Upper wick: from high to max(open, close) */}
+                  <line 
+                    x1={cx} 
+                    y1={highY}
+                    x2={cx} 
+                    y2={Math.min(openY, closeY)}
+                    stroke={color} 
+                    strokeWidth={2.5}
+                    strokeOpacity={1}
+                  />
+                  {/* Lower wick: from min(open, close) to low */}
+                  <line 
+                    x1={cx} 
+                    y1={Math.max(openY, closeY)}
+                    x2={cx} 
+                    y2={lowY}
+                    stroke={color} 
+                    strokeWidth={2.5}
+                    strokeOpacity={1}
+                  />
+                  {/* Body: rectangle */}
+                  <rect 
+                    x={cx - halfWidth}
+                    y={bodyTop}
+                    width={candleWidth}
+                    height={bodyHeight}
+                    fill={isGreen ? '#0f172a' : color}
+                    stroke={color}
+                    strokeWidth={2}
+                    strokeOpacity={1}
+                    fillOpacity={isGreen ? 0.9 : 1}
+                  />
+                </g>
+              );
+            }}
+          />
+          
+          {/* Supertrend 1 - Up trend (green) */}
+          <Line 
+            type="monotone" 
+            dataKey="st1Up" 
+            stroke="#10b981" 
+            strokeWidth={2} 
+            dot={false}
+            name="ST1"
+            connectNulls={true}
+          />
+          
+          {/* Supertrend 1 - Down trend (red) */}
+          <Line 
+            type="monotone" 
+            dataKey="st1Down" 
+            stroke="#ef4444" 
+            strokeWidth={2} 
+            dot={false}
+            name="ST1"
+            connectNulls={true}
+          />
+          
+          {/* Supertrend 2 - Up trend (bright green) */}
+          <Line 
+            type="monotone" 
+            dataKey="st2Up" 
+            stroke="#1afd06" 
+            strokeWidth={2} 
+            dot={false}
+            name="ST2"
+            connectNulls={true}
+          />
+          
+          {/* Supertrend 2 - Down trend (orange) */}
+          <Line 
+            type="monotone" 
+            dataKey="st2Down" 
+            stroke="#f97316" 
+            strokeWidth={2} 
+            dot={false}
+            name="ST2"
+            connectNulls={true}
+          />
+          
+          {/* Supertrend 3 - Up trend (yellow) */}
+          <Line 
+            type="monotone" 
+            dataKey="st3Up" 
+            stroke="#f8f400" 
+            strokeWidth={2} 
+            dot={false}
+            name="ST3"
+            connectNulls={true}
+          />
+          
+          {/* Supertrend 3 - Down trend (cyan) */}
+          <Line 
+            type="monotone" 
+            dataKey="st3Down" 
+            stroke="#00f7f7" 
+            strokeWidth={2} 
+            dot={false}
+            name="ST3"
+            connectNulls={true}
+          />
+          
+          {/* Price line - White line for clear visibility (render on top) */}
+          <Line 
+            type="monotone" 
+            dataKey="close" 
+            stroke="#ffffff" 
+            strokeWidth={3} 
+            dot={false}
+            name={language === 'zh' ? '价格' : 'Price'}
+            strokeOpacity={1}
+            isAnimationActive={false}
+          />
+          
+          {/* Signals - Level 3 (most important) */}
+          <Scatter 
+            name={language === 'zh' ? '触及ST3' : 'Touch ST3'} 
+            data={touching3Signals} 
+            shape={(props: any) => {
+              const { cx, cy } = props;
+              if (!cx || !cy || isNaN(cx) || isNaN(cy)) return null;
+              return (
+                <g>
+                  <rect x={cx - 12} y={cy - 12} width={24} height={24} rx={4} fill="#ef4444" stroke="#fff" strokeWidth={2} />
+                  <text x={cx} y={cy + 5} textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">3</text>
+                </g>
+              );
+            }} 
+          />
+          
+          {/* Signals - Level 2 */}
+          <Scatter 
+            name={language === 'zh' ? '触及ST2' : 'Touch ST2'} 
+            data={touching2Signals.filter(d => !d.supertrendTouching3)} 
+            shape={(props: any) => {
+              const { cx, cy } = props;
+              if (!cx || !cy || isNaN(cx) || isNaN(cy)) return null;
+              return (
+                <g>
+                  <rect x={cx - 10} y={cy - 10} width={20} height={20} rx={4} fill="#f97316" stroke="#fff" strokeWidth={1.5} />
+                  <text x={cx} y={cy + 4} textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">2</text>
+                </g>
+              );
+            }} 
+          />
+          
+          {/* Signals - Level 1 */}
+          <Scatter 
+            name={language === 'zh' ? '触及ST1' : 'Touch ST1'} 
+            data={touching1Signals.filter(d => !d.supertrendTouching2 && !d.supertrendTouching3)} 
+            shape={(props: any) => {
+              const { cx, cy } = props;
+              if (!cx || !cy || isNaN(cx) || isNaN(cy)) return null;
+              return (
+                <g>
+                  <circle cx={cx} cy={cy} r={6} fill="#fbbf24" stroke="#fff" strokeWidth={1} />
+                  <text x={cx} y={cy + 4} textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">1</text>
+                </g>
+              );
+            }} 
           />
         </ComposedChart>
       </ResponsiveContainer>

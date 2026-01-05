@@ -10,13 +10,15 @@ interface SignalEvent {
   symbol: string;
   name: string;
   category: string;
-  signalType: 'strong_buy' | 'buy' | 'sell' | 'overbought' | 'new_zone' | 'imminent_breakout' | 'breakout_up' | 'breakout_down';
+  signalType: 'strong_buy' | 'buy' | 'sell' | 'overbought' | 'new_zone' | 'imminent_breakout' | 'breakout_up' | 'breakout_down' | 'supertrend_alert1' | 'supertrend_alert2' | 'supertrend_alert3';
   signalDate: string;
   price: number;
   rsi: number;
   indicator1: boolean;
   indicator2: boolean;
   indicator3: boolean;
+  indicator5?: boolean;
+  alertLevel?: number;
   daysAgo: number;
 }
 
@@ -29,6 +31,7 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
   const [signals, setSignals] = useState<SignalEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<'1W' | '1M' | '3M'>('1W');
+  const [filterMode, setFilterMode] = useState<'all' | 'multi_resonance'>('all');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -66,8 +69,61 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
               if (!isInPeriod) return;
 
               // Determine signal type
+              // Indicator 5 signals (highest priority - Supertrend alerts)
+              if (indicator.supertrendAlertLevel === 3) {
+                allSignals.push({
+                  assetId: config.id,
+                  symbol: config.symbol,
+                  name: config.name,
+                  category: config.category,
+                  signalType: 'supertrend_alert3',
+                  signalDate: indicator.time,
+                  price: indicator.close,
+                  rsi: indicator.rsi,
+                  indicator1: indicator.isOversold1,
+                  indicator2: indicator.isOversold2,
+                  indicator3: false,
+                  indicator5: true,
+                  alertLevel: 3,
+                  daysAgo,
+                });
+              } else if (indicator.supertrendAlertLevel === 2) {
+                allSignals.push({
+                  assetId: config.id,
+                  symbol: config.symbol,
+                  name: config.name,
+                  category: config.category,
+                  signalType: 'supertrend_alert2',
+                  signalDate: indicator.time,
+                  price: indicator.close,
+                  rsi: indicator.rsi,
+                  indicator1: indicator.isOversold1,
+                  indicator2: indicator.isOversold2,
+                  indicator3: false,
+                  indicator5: true,
+                  alertLevel: 2,
+                  daysAgo,
+                });
+              } else if (indicator.supertrendAlertLevel === 1) {
+                allSignals.push({
+                  assetId: config.id,
+                  symbol: config.symbol,
+                  name: config.name,
+                  category: config.category,
+                  signalType: 'supertrend_alert1',
+                  signalDate: indicator.time,
+                  price: indicator.close,
+                  rsi: indicator.rsi,
+                  indicator1: indicator.isOversold1,
+                  indicator2: indicator.isOversold2,
+                  indicator3: false,
+                  indicator5: true,
+                  alertLevel: 1,
+                  daysAgo,
+                });
+              }
               // Indicator 3 signals (priority)
-              if (indicator.isBreakoutUp) {
+              else if (indicator.isBreakoutUp) {
                 allSignals.push({
                   assetId: config.id,
                   symbol: config.symbol,
@@ -80,6 +136,8 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                   indicator1: indicator.isOversold1,
                   indicator2: indicator.isOversold2,
                   indicator3: true,
+                  indicator5: (indicator.supertrendAlertLevel !== undefined && indicator.supertrendAlertLevel > 0),
+                  alertLevel: indicator.supertrendAlertLevel,
                   daysAgo,
                 });
               } else if (indicator.isBreakoutDown) {
@@ -95,6 +153,8 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                   indicator1: indicator.isOversold1,
                   indicator2: indicator.isOversold2,
                   indicator3: true,
+                  indicator5: (indicator.supertrendAlertLevel !== undefined && indicator.supertrendAlertLevel > 0),
+                  alertLevel: indicator.supertrendAlertLevel,
                   daysAgo,
                 });
               } else if (indicator.isImminentBreakout) {
@@ -110,6 +170,8 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                   indicator1: indicator.isOversold1,
                   indicator2: indicator.isOversold2,
                   indicator3: true,
+                  indicator5: (indicator.supertrendAlertLevel !== undefined && indicator.supertrendAlertLevel > 0),
+                  alertLevel: indicator.supertrendAlertLevel,
                   daysAgo,
                 });
               } else if (indicator.isNewZone) {
@@ -125,6 +187,8 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                   indicator1: indicator.isOversold1,
                   indicator2: indicator.isOversold2,
                   indicator3: true,
+                  indicator5: (indicator.supertrendAlertLevel !== undefined && indicator.supertrendAlertLevel > 0),
+                  alertLevel: indicator.supertrendAlertLevel,
                   daysAgo,
                 });
               } else if (indicator.strongBuySignal) {
@@ -140,6 +204,8 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                   indicator1: indicator.isOversold1,
                   indicator2: indicator.isOversold2,
                   indicator3: false,
+                  indicator5: (indicator.supertrendAlertLevel !== undefined && indicator.supertrendAlertLevel > 0),
+                  alertLevel: indicator.supertrendAlertLevel,
                   daysAgo,
                 });
               } else if (indicator.buySignal) {
@@ -155,6 +221,8 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                   indicator1: indicator.isOversold1,
                   indicator2: indicator.isOversold2,
                   indicator3: false,
+                  indicator5: (indicator.supertrendAlertLevel !== undefined && indicator.supertrendAlertLevel > 0),
+                  alertLevel: indicator.supertrendAlertLevel,
                   daysAgo,
                 });
               } else if (indicator.isOverbought1 || indicator.isOverbought2) {
@@ -170,6 +238,8 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                   indicator1: indicator.isOverbought1,
                   indicator2: indicator.isOverbought2,
                   indicator3: false,
+                  indicator5: (indicator.supertrendAlertLevel !== undefined && indicator.supertrendAlertLevel > 0),
+                  alertLevel: indicator.supertrendAlertLevel,
                   daysAgo,
                 });
               }
@@ -196,19 +266,37 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
     fetchAllSignals();
   }, [selectedPeriod, timeframe]);
 
+  // Filter signals based on filter mode
+  const filteredSignals = useMemo(() => {
+    if (filterMode === 'multi_resonance') {
+      // Filter for signals where indicator 1, 2, 3, and 5 all have signals
+      return signals.filter(s => 
+        s.indicator1 && s.indicator2 && s.indicator3 && s.indicator5
+      );
+    }
+    return signals;
+  }, [signals, filterMode]);
+
   const groupedSignals = useMemo(() => {
     const groups: Record<string, SignalEvent[]> = {
-      [t.signals.breakoutUp]: signals.filter(s => s.signalType === 'breakout_up'),
-      [t.signals.breakoutDown]: signals.filter(s => s.signalType === 'breakout_down'),
-      [t.signals.imminentBreakout]: signals.filter(s => s.signalType === 'imminent_breakout'),
-      [t.signals.newZone]: signals.filter(s => s.signalType === 'new_zone'),
-      [t.signals.strongBuy]: signals.filter(s => s.signalType === 'strong_buy'),
-      [t.signals.buy]: signals.filter(s => s.signalType === 'buy'),
-      [t.signals.sell]: signals.filter(s => s.signalType === 'sell'),
-      [t.signals.overbought]: signals.filter(s => s.signalType === 'overbought'),
+      // Multi-Indicator Resonance (all indicators signal together)
+      [language === 'zh' ? '🔥 多指标共振' : '🔥 Multi-Indicator Resonance']: filteredSignals.filter(s => 
+        s.indicator1 && s.indicator2 && s.indicator3 && s.indicator5
+      ),
+      [language === 'zh' ? 'Supertrend 3级预警' : 'Supertrend Alert 3']: filteredSignals.filter(s => s.signalType === 'supertrend_alert3'),
+      [language === 'zh' ? 'Supertrend 2级预警' : 'Supertrend Alert 2']: filteredSignals.filter(s => s.signalType === 'supertrend_alert2'),
+      [language === 'zh' ? 'Supertrend 1级预警' : 'Supertrend Alert 1']: filteredSignals.filter(s => s.signalType === 'supertrend_alert1'),
+      [t.signals.breakoutUp]: filteredSignals.filter(s => s.signalType === 'breakout_up'),
+      [t.signals.breakoutDown]: filteredSignals.filter(s => s.signalType === 'breakout_down'),
+      [t.signals.imminentBreakout]: filteredSignals.filter(s => s.signalType === 'imminent_breakout'),
+      [t.signals.newZone]: filteredSignals.filter(s => s.signalType === 'new_zone'),
+      [t.signals.strongBuy]: filteredSignals.filter(s => s.signalType === 'strong_buy'),
+      [t.signals.buy]: filteredSignals.filter(s => s.signalType === 'buy'),
+      [t.signals.sell]: filteredSignals.filter(s => s.signalType === 'sell'),
+      [t.signals.overbought]: filteredSignals.filter(s => s.signalType === 'overbought'),
     };
     return groups;
-  }, [signals, t]);
+  }, [filteredSignals, t, language]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -221,6 +309,9 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
 
   const getSignalColor = (type: string) => {
     switch (type) {
+      case 'supertrend_alert3': return 'text-red-500 bg-red-500/20 border-red-500/40';
+      case 'supertrend_alert2': return 'text-orange-500 bg-orange-500/20 border-orange-500/40';
+      case 'supertrend_alert1': return 'text-yellow-500 bg-yellow-500/20 border-yellow-500/40';
       case 'breakout_up': return 'text-blue-400 bg-blue-400/10 border-blue-400/20';
       case 'breakout_down': return 'text-red-500 bg-red-500/10 border-red-500/20';
       case 'imminent_breakout': return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
@@ -235,6 +326,12 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
 
   const getSignalIcon = (type: string) => {
     switch (type) {
+      case 'supertrend_alert3':
+        return <AlertCircle size={16} className="text-red-500" />;
+      case 'supertrend_alert2':
+        return <AlertCircle size={16} className="text-orange-500" />;
+      case 'supertrend_alert1':
+        return <AlertCircle size={16} className="text-yellow-500" />;
       case 'breakout_up':
         return <TrendingUp size={16} className="text-blue-400" />;
       case 'breakout_down':
@@ -274,6 +371,58 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
 
   return (
     <div className="w-full bg-slate-900/50 rounded-lg border border-slate-800">
+      {/* Filter Rules Explanation */}
+      <div className="p-4 border-b border-slate-800 bg-slate-800/30">
+        <h4 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2">
+          <AlertCircle size={16} className="text-blue-400" />
+          {language === 'zh' ? '筛选规则说明' : 'Filter Rules'}
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <div className="bg-slate-900/50 p-2 rounded border border-blue-500/20">
+            <div className="font-bold text-blue-400 mb-1">Indicator 1 (RSI+ATR)</div>
+            <div className="text-slate-400">
+              {language === 'zh' 
+                ? 'RSI < 30 且 价格 < EMA20 - 2.5*ATR' 
+                : 'RSI < 30 AND Price < EMA20 - 2.5*ATR'}
+            </div>
+          </div>
+          <div className="bg-slate-900/50 p-2 rounded border border-purple-500/20">
+            <div className="font-bold text-purple-400 mb-1">Indicator 2 (Alpha Score)</div>
+            <div className="text-slate-400">
+              {language === 'zh' 
+                ? '综合评分 < 动态下统计带' 
+                : 'Aggregated Score < Lower Band'}
+            </div>
+          </div>
+          <div className="bg-slate-900/50 p-2 rounded border border-cyan-500/20">
+            <div className="font-bold text-cyan-400 mb-1">Indicator 3 (Energy Reactor)</div>
+            <div className="text-slate-400">
+              {language === 'zh' 
+                ? '新区间/即将突破/突破信号' 
+                : 'New Zone/Imminent/Breakout'}
+            </div>
+          </div>
+          <div className="bg-slate-900/50 p-2 rounded border border-orange-500/20">
+            <div className="font-bold text-orange-400 mb-1">Indicator 5 (Supertrend)</div>
+            <div className="text-slate-400">
+              {language === 'zh' 
+                ? '价格触及ST1/ST2/ST3线' 
+                : 'Price touches ST1/ST2/ST3'}
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 p-2 bg-yellow-900/20 border border-yellow-500/30 rounded">
+          <div className="font-bold text-yellow-400 text-xs mb-1">
+            {language === 'zh' ? '🔥 多指标共振' : '🔥 Multi-Indicator Resonance'}
+          </div>
+          <div className="text-slate-400 text-xs">
+            {language === 'zh' 
+              ? '当Indicator 1、2、3、5同时出现信号时触发，表示多个技术指标共振，信号强度最高' 
+              : 'Triggers when Indicators 1, 2, 3, and 5 all signal simultaneously. Highest signal strength.'}
+          </div>
+        </div>
+      </div>
+
       <div className="p-4 border-b border-slate-800">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -281,6 +430,26 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
             {t.watchPanel.title}
           </h3>
           <div className="flex gap-2">
+            <button
+              onClick={() => setFilterMode('all')}
+              className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                filterMode === 'all'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              {language === 'zh' ? '全部信号' : 'All Signals'}
+            </button>
+            <button
+              onClick={() => setFilterMode('multi_resonance')}
+              className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                filterMode === 'multi_resonance'
+                  ? 'bg-yellow-600 text-white'
+                  : 'bg-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              {language === 'zh' ? '🔥 多指标共振' : '🔥 Resonance'}
+            </button>
             <button
               onClick={() => setSelectedPeriod('1W')}
               className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
@@ -314,14 +483,20 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
           </div>
         </div>
         <div className="text-xs text-slate-400">
-          {t.watchPanel.showingSignals} {selectedPeriod === '1W' ? (language === 'zh' ? '1周' : 'week') : selectedPeriod === '1M' ? (language === 'zh' ? '1个月' : 'month') : (language === 'zh' ? '3个月' : '3 months')} ({signals.length} {t.watchPanel.total})
+          {t.watchPanel.showingSignals} {selectedPeriod === '1W' ? (language === 'zh' ? '1周' : 'week') : selectedPeriod === '1M' ? (language === 'zh' ? '1个月' : 'month') : (language === 'zh' ? '3个月' : '3 months')} 
+          {filterMode === 'multi_resonance' 
+            ? ` (${language === 'zh' ? '仅显示多指标共振' : 'Multi-Indicator Resonance only'})` 
+            : ''} 
+          ({filteredSignals.length} {t.watchPanel.total})
         </div>
       </div>
 
       <div className="p-4 space-y-4 max-h-[600px] overflow-y-auto">
-        {signals.length === 0 ? (
+        {filteredSignals.length === 0 ? (
           <div className="text-center py-8 text-slate-400 text-sm">
-            {t.watchPanel.noSignals}
+            {filterMode === 'multi_resonance' 
+              ? (language === 'zh' ? '未找到多指标共振信号' : 'No multi-indicator resonance signals found')
+              : t.watchPanel.noSignals}
           </div>
         ) : (
           Object.entries(groupedSignals).map(([groupName, groupSignals]) => {
@@ -390,6 +565,15 @@ export const SignalWatchPanel: React.FC<SignalWatchPanelProps> = ({ timeframe })
                           {signal.indicator3 && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">
                               {t.watchPanel.indicator3}
+                            </span>
+                          )}
+                          {signal.indicator5 && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                              signal.alertLevel === 3 ? 'bg-red-500/30 text-red-300' :
+                              signal.alertLevel === 2 ? 'bg-orange-500/30 text-orange-300' :
+                              'bg-yellow-500/30 text-yellow-300'
+                            }`}>
+                              {language === 'zh' ? '指标5' : 'Ind5'} {signal.alertLevel}
                             </span>
                           )}
                         </div>

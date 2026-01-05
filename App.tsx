@@ -4,7 +4,7 @@ import { ASSETS_CONFIG, getAllAssets, analyzeAsset, getAssetSummary } from './se
 import { Timeframe } from './types';
 import { testBinanceConnection } from './services/api';
 import AssetCard from './components/AssetCard';
-import { MainPriceChart, OscillatorChart, LatentEnergyChart } from './components/IndicatorChart';
+import { MainPriceChart, OscillatorChart, LatentEnergyChart, OrderbookImbalanceChart, SupertrendChart } from './components/IndicatorChart';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SignalWatchPanel } from './components/SignalWatchPanel';
 import { MacroDashboard } from './components/MacroDashboard';
@@ -514,7 +514,7 @@ const App: React.FC = () => {
                     </div>
                 )}
                 
-                <div className="flex bg-slate-800 rounded-lg p-1">
+                <div className="flex bg-slate-800 rounded-lg p-1 gap-1">
                     <button 
                         onClick={() => setTimeframe('1D')}
                         className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
@@ -535,6 +535,30 @@ const App: React.FC = () => {
                     >
                         {t.nav.weekly}
                     </button>
+                    {currentAsset?.category === AssetCategory.CRYPTO && (
+                        <>
+                            <button 
+                                onClick={() => setTimeframe('15m')}
+                                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                                    timeframe === '15m' 
+                                    ? 'bg-blue-600 text-white shadow' 
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                            >
+                                15m
+                            </button>
+                            <button 
+                                onClick={() => setTimeframe('1m')}
+                                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                                    timeframe === '1m' 
+                                    ? 'bg-blue-600 text-white shadow' 
+                                    : 'text-slate-400 hover:text-white'
+                                }`}
+                            >
+                                1m
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
         </header>
@@ -656,6 +680,108 @@ const App: React.FC = () => {
                             )}
                         </div>
                      </div>
+
+                     {/* Indicator 4 Card - Only show for crypto assets */}
+                     {currentAsset?.category === AssetCategory.CRYPTO && latestData && (
+                        <div className={`bg-slate-800/50 border rounded-xl p-4 ${
+                            latestData.hasOrderbookData && latestData.orderbookOscillator !== undefined
+                                ? (latestData.orderbookOscillator > 0 ? 'border-green-500/50 bg-green-900/10' : 'border-red-500/50 bg-red-900/10')
+                                : 'border-slate-700'
+                        }`}>
+                            <p className="text-slate-400 text-xs mb-1">Indicator 4 (Orderbook Imbalance)</p>
+                            <div className="flex items-center justify-between">
+                                <span className={`text-2xl font-bold ${
+                                    latestData.hasOrderbookData && latestData.orderbookOscillator !== undefined
+                                        ? (latestData.orderbookOscillator > 0 ? 'text-green-400' : 'text-red-400')
+                                        : 'text-slate-200'
+                                }`}>
+                                    {latestData.hasOrderbookData 
+                                        ? (latestData.orderbookOscillator !== undefined && latestData.orderbookOscillator > 0 
+                                            ? (language === 'zh' ? '买入压力' : 'BUY PRESSURE')
+                                            : (language === 'zh' ? '卖出压力' : 'SELL PRESSURE'))
+                                        : (language === 'zh' ? '数据不可用' : 'N/A')}
+                                </span>
+                                <div className={`h-3 w-3 rounded-full ${
+                                    latestData.hasOrderbookData && latestData.orderbookOscillator !== undefined
+                                        ? (latestData.orderbookOscillator > 0 ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-red-500 shadow-[0_0_10px_#ef4444]')
+                                        : 'bg-slate-600'
+                                }`}></div>
+                            </div>
+                            <div className="mt-2 text-xs flex gap-2 flex-wrap">
+                                {latestData.hasOrderbookData && latestData.orderbookImbalance !== undefined && (
+                                    <span className="bg-slate-900 px-2 py-0.5 rounded text-cyan-400">
+                                        {language === 'zh' ? '比率' : 'Ratio'}: {latestData.orderbookImbalance.toFixed(4)}
+                                    </span>
+                                )}
+                                {latestData.hasOrderbookData && latestData.orderbookOscillator !== undefined && (
+                                    <span className={`bg-slate-900 px-2 py-0.5 rounded ${
+                                        latestData.orderbookOscillator > 0 ? 'text-green-400' : 'text-red-400'
+                                    }`}>
+                                        {language === 'zh' ? '振荡器' : 'Oscillator'}: {latestData.orderbookOscillator.toFixed(4)}
+                                    </span>
+                                )}
+                                {!latestData.hasOrderbookData && (
+                                    <span className="bg-slate-900 px-2 py-0.5 rounded text-slate-500 text-[10px]">
+                                        {language === 'zh' ? '仅实时数据可用' : 'Real-time only'}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                     )}
+
+                     {/* Indicator 5 Card - Triple Lines Supertrend */}
+                     {latestData && (
+                        <div className={`bg-slate-800/50 border rounded-xl p-4 ${
+                            latestData.supertrendAlertLevel === 3 ? 'border-red-500/50 bg-red-900/10' :
+                            latestData.supertrendAlertLevel === 2 ? 'border-orange-500/50 bg-orange-900/10' :
+                            latestData.supertrendAlertLevel === 1 ? 'border-yellow-500/50 bg-yellow-900/10' :
+                            'border-slate-700'
+                        }`}>
+                            <p className="text-slate-400 text-xs mb-1">Indicator 5 (Triple Lines Supertrend)</p>
+                            <div className="flex items-center justify-between">
+                                <span className={`text-2xl font-bold ${
+                                    latestData.supertrendAlertLevel === 3 ? 'text-red-400' :
+                                    latestData.supertrendAlertLevel === 2 ? 'text-orange-400' :
+                                    latestData.supertrendAlertLevel === 1 ? 'text-yellow-400' :
+                                    'text-slate-200'
+                                }`}>
+                                    {latestData.supertrendAlertLevel === 3 ? (language === 'zh' ? '3级预警' : 'ALERT 3') :
+                                     latestData.supertrendAlertLevel === 2 ? (language === 'zh' ? '2级预警' : 'ALERT 2') :
+                                     latestData.supertrendAlertLevel === 1 ? (language === 'zh' ? '1级预警' : 'ALERT 1') :
+                                     (language === 'zh' ? '监控中' : 'MONITORING')}
+                                </span>
+                                <div className={`h-3 w-3 rounded-full ${
+                                    latestData.supertrendAlertLevel === 3 ? 'bg-red-500 shadow-[0_0_10px_#ef4444]' :
+                                    latestData.supertrendAlertLevel === 2 ? 'bg-orange-500 shadow-[0_0_10px_#f97316]' :
+                                    latestData.supertrendAlertLevel === 1 ? 'bg-yellow-500 shadow-[0_0_10px_#fbbf24]' :
+                                    'bg-slate-600'
+                                }`}></div>
+                            </div>
+                            <div className="mt-2 text-xs flex gap-2 flex-wrap">
+                                {latestData.supertrend1 !== undefined && (
+                                    <span className={`bg-slate-900 px-2 py-0.5 rounded ${
+                                        latestData.supertrendTrend1 === 1 ? 'text-green-400' : 'text-red-400'
+                                    }`}>
+                                        ST1: {latestData.supertrend1.toFixed(2)} {latestData.supertrendTrend1 === 1 ? '↑' : '↓'}
+                                    </span>
+                                )}
+                                {latestData.supertrend2 !== undefined && (
+                                    <span className={`bg-slate-900 px-2 py-0.5 rounded ${
+                                        latestData.supertrendTrend2 === 1 ? 'text-green-400' : 'text-orange-400'
+                                    }`}>
+                                        ST2: {latestData.supertrend2.toFixed(2)} {latestData.supertrendTrend2 === 1 ? '↑' : '↓'}
+                                    </span>
+                                )}
+                                {latestData.supertrend3 !== undefined && (
+                                    <span className={`bg-slate-900 px-2 py-0.5 rounded ${
+                                        latestData.supertrendTrend3 === 1 ? 'text-yellow-400' : 'text-cyan-400'
+                                    }`}>
+                                        ST3: {latestData.supertrend3.toFixed(2)} {latestData.supertrendTrend3 === 1 ? '↑' : '↓'}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                     )}
                 </div>
             )}
 
@@ -674,6 +800,17 @@ const App: React.FC = () => {
                         <MainPriceChart data={marketData.indicators} />
                         <OscillatorChart data={marketData.indicators} />
                         <LatentEnergyChart data={marketData.indicators} />
+                        {/* Indicator 4: Orderbook Imbalance - Only show for crypto assets */}
+                        {/* Indicator4 has its own timeframe selector (15m/1m) independent of other indicators */}
+                        {currentAsset?.category === AssetCategory.CRYPTO && currentAsset && (
+                            <OrderbookImbalanceChart 
+                                symbol={currentAsset.id}
+                                yahooSymbol={ASSETS_CONFIG.find(a => a.id === currentAsset.id)?.yahooSymbol}
+                            />
+                        )}
+                        
+                        {/* Indicator 5: Triple Lines Supertrend */}
+                        <SupertrendChart data={marketData.indicators} />
                         
                         {/* Data Source Info */}
                         <div className="mt-4 p-3 border border-slate-800 rounded bg-slate-900/30 text-xs text-slate-400">
@@ -683,6 +820,10 @@ const App: React.FC = () => {
                                 <li><strong className="text-blue-400">{t.dataSource.indicator1}</strong> {language === 'zh' ? '基于真实OHLC价格使用标准技术分析公式计算' : 'Calculated from real OHLC prices using standard technical analysis formulas'}</li>
                                 <li><strong className="text-purple-400">{t.dataSource.indicator2}</strong> {language === 'zh' ? '基于真实日收益率使用Omega比率+Sortino比率计算（Pine Script实现）' : 'Calculated from real daily returns using Omega Ratio + Sortino Ratio (Pine Script implementation)'}</li>
                                 <li><strong className="text-cyan-400">{t.dataSource.indicator3}</strong> {language === 'zh' ? '基于区间检测和潜在能量计算（Latent Energy Reactor实现）' : 'Calculated from range detection and latent energy analysis (Latent Energy Reactor implementation)'}</li>
+                                {currentAsset?.category === AssetCategory.CRYPTO && (
+                                    <li><strong className="text-yellow-400">Indicator 4 (Orderbook Imbalance)</strong> {language === 'zh' ? '基于Binance订单簿深度数据计算（仅加密货币，实时数据）' : 'Calculated from Binance orderbook depth data (crypto only, real-time data)'}</li>
+                                )}
+                                <li><strong className="text-orange-400">{t.dataSource.indicator5}</strong> {language === 'zh' ? '基于真实OHLC价格使用三重Supertrend算法计算（ATR Period=10，Multiplier分别为3.0/3.6/4.3，Pine Script实现）' : 'Calculated from real OHLC prices using Triple Lines Supertrend algorithm (ATR Period=10, Multipliers 3.0/3.6/4.3, Pine Script implementation)'}</li>
                                 <li><strong className="text-slate-300">{t.dataSource.dataPoints}</strong> {marketData.indicators.length} {language === 'zh' ? '个历史K线用于计算' : 'historical candles used for calculations'}</li>
                             </ul>
                         </div>
@@ -703,6 +844,9 @@ const App: React.FC = () => {
                     <li><strong className="text-cyan-400">{t.instructions.indicator3NewZone}</strong> {language === 'zh' ? '当检测到新的震荡整理区间形成时触发。能量开始积聚。' : 'Triggers when a new consolidation zone is detected. Energy starts accumulating.'}</li>
                     <li><strong className="text-yellow-400">{t.instructions.indicator3Imminent}</strong> {language === 'zh' ? '当能量达到临界值（≥80%）且突破质量高（≥70%）时触发。突破在即。' : 'Triggers when energy reaches critical threshold (≥80%) and breakout quality is high (≥70%). Breakout is imminent.'}</li>
                     <li><strong className="text-blue-400">{t.instructions.indicator3Breakout}</strong> {language === 'zh' ? '当价格突破区间上沿（看涨）或下沿（看跌）时触发。确认突破信号。' : 'Triggers when price breaks above range top (bullish) or below range bottom (bearish). Confirms breakout signal.'}</li>
+                    <li><strong className="text-yellow-400">{t.instructions.indicator5Alert1}</strong> {language === 'zh' ? '当价格触及Supertrend 1线（ST1，Multiplier=3.0）时触发。1级预警，表示价格接近趋势线。' : 'Triggers when price touches Supertrend 1 line (ST1, Multiplier=3.0). Level 1 alert indicates price approaching trend line.'}</li>
+                    <li><strong className="text-orange-400">{t.instructions.indicator5Alert2}</strong> {language === 'zh' ? '当价格触及Supertrend 2线（ST2，Multiplier=3.6）时触发。2级预警，表示价格接近重要趋势线。' : 'Triggers when price touches Supertrend 2 line (ST2, Multiplier=3.6). Level 2 alert indicates price approaching important trend line.'}</li>
+                    <li><strong className="text-red-400 border border-red-500 px-1 rounded">{t.instructions.indicator5Alert3}</strong> {language === 'zh' ? '当价格触及Supertrend 3线（ST3，Multiplier=4.3）时触发。3级预警最重要，表示价格触及关键趋势线，可能出现趋势反转。支持日线和周线级别。' : 'Triggers when price touches Supertrend 3 line (ST3, Multiplier=4.3). Level 3 alert is the most important, indicating price touching critical trend line with potential trend reversal. Available for daily and weekly timeframes.'}</li>
                 </ul>
                 <p className="mt-4 italic opacity-50">{t.instructions.disclaimer}</p>
             </div>

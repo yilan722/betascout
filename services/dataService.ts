@@ -1,6 +1,7 @@
 import { Asset, AssetCategory, Candle, IndicatorData } from '../types';
-import { calculateEMA, calculateRSI, calculateATR, avg, stdDev, calculateSMA, calculateRollingStdDev, sum } from '../utils/math';
-import { fetchCandles } from './api';
+import { calculateEMA, calculateRSI, calculateATR, avg, stdDev, calculateSMA, calculateRollingStdDev, sum, calculateSupertrend } from '../utils/math';
+import { fetchCandles, fetchOrderbookDepth, calculateOrderbookImbalance } from './api';
+import { loadOrderbookHistory, saveOrderbookSnapshot, getAggregatedOrderbookHistory } from './orderbookStorage';
 
 // --- Configuration ---
 
@@ -560,7 +561,7 @@ const generateRandomWalk = (startPrice: number, vol: number, steps: number): Can
 
 // --- Analysis Engine ---
 
-export const analyzeAsset = async (assetId: string, timeframe: '1D' | '1W' = '1D'): Promise<{ candles: Candle[], indicators: IndicatorData[] }> => {
+export const analyzeAsset = async (assetId: string, timeframe: '1D' | '1W' | '15m' | '1m' = '1D'): Promise<{ candles: Candle[], indicators: IndicatorData[] }> => {
   const config = ASSETS_CONFIG.find(a => a.id === assetId);
   if (!config) throw new Error('Asset not found');
 
@@ -1153,6 +1154,212 @@ export const analyzeAsset = async (assetId: string, timeframe: '1D' | '1W' = '1D
   const latestEnergy = latentEnergies[latentEnergies.length - 1] || 0;
   console.log(`   ✅ Indicator 3 calculated: Energy=${latestEnergy?.toFixed(1)}, Active Zones=${rangeZones.filter(z => z.isActive).length}`);
 
+  // --- Indicator 4: SCF Orderbook Imbalance ---
+  // For crypto assets, use historical orderbook data from localStorage
+  // Depth: 1% (like CoinGlass), MA period: 13
+  console.log(`   Calculating Indicator 4 (Orderbook Imbalance)...`);
+  
+  const isCrypto = config.category === AssetCategory.CRYPTO;
+  const depthPct = 1; // Use 1% depth like CoinGlass
+  const maPeriod = 13; // MA period for ratio
+  
+  // Initialize arrays
+  const orderbookRatios: number[] = [];
+  const orderbookDeltas: number[] = [];
+  const orderbookMaRatios: number[] = [];
+  const orderbookOscillators: number[] = [];
+  
+  if (isCrypto && candles.length > 0) {
+    // For 15m and 1m timeframes, use historical orderbook data
+    if (timeframe === '15m' || timeframe === '1m') {
+      try {
+        // Get historical orderbook data aggregated by timeframe
+        const lookbackHours = timeframe === '15m' ? 24 : 12; // 24h for 15m, 12h for 1m
+        const history = getAggregatedOrderbookHistory(config.yahooSymbol, timeframe, lookbackHours);
+        
+        // Create maps for quick lookup
+        const historyImbalanceMap = new Map<number, number>();
+        const historyDeltaMap = new Map<number, number>();
+        for (const entry of history) {
+          historyImbalanceMap.set(entry.timestamp, entry.imbalance);
+          // Ensure delta is a valid number (not NaN, null, or undefined)
+          const delta = (entry.delta !== undefined && entry.delta !== null && !isNaN(entry.delta)) 
+            ? entry.delta 
+            : (entry.bidVol - entry.askVol); // Fallback: calculate from bidVol and askVol
+          historyDeltaMap.set(entry.timestamp, delta);
+        }
+        
+        // Match candles with orderbook history
+        // For 1m: match exactly to minute boundaries (like CoinGlass)
+        // For 15m: match to 15-minute boundaries
+        const orderbookDeltas: number[] = [];
+        for (const candle of candles) {
+          const candleTime = new Date(candle.time).getTime();
+          const candleDate = new Date(candleTime);
+          
+          // Align candle time to minute/15-minute boundary (same as aggregation)
+          let alignedCandleTime: number;
+          if (timeframe === '15m') {
+            const minutes = candleDate.getMinutes();
+            const alignedMinutes = Math.floor(minutes / 15) * 15;
+            alignedCandleTime = new Date(candleDate.getFullYear(), candleDate.getMonth(), candleDate.getDate(), 
+                                        candleDate.getHours(), alignedMinutes, 0, 0).getTime();
+          } else {
+            // 1m: align to minute boundary
+            alignedCandleTime = new Date(candleDate.getFullYear(), candleDate.getMonth(), candleDate.getDate(), 
+                                        candleDate.getHours(), candleDate.getMinutes(), 0, 0).getTime();
+          }
+          
+          // Find exact match first, then closest match
+          let matchedImbalance: number | null = null;
+          let matchedDelta: number | null = null;
+          
+          // Try exact match first
+          if (historyImbalanceMap.has(alignedCandleTime)) {
+            matchedImbalance = historyImbalanceMap.get(alignedCandleTime) || null;
+            matchedDelta = historyDeltaMap.get(alignedCandleTime) || null;
+          } else {
+            // Find closest match within tolerance
+            const tolerance = timeframe === '15m' ? 7.5 * 60 * 1000 : 30 * 1000;
+            let minDiff = Infinity;
+            let closestTimestamp: number | null = null;
+            
+            for (const timestamp of historyImbalanceMap.keys()) {
+              const diff = Math.abs(alignedCandleTime - timestamp);
+              if (diff < minDiff && diff < tolerance) {
+                minDiff = diff;
+                closestTimestamp = timestamp;
+              }
+            }
+            
+            if (closestTimestamp !== null) {
+              matchedImbalance = historyImbalanceMap.get(closestTimestamp) || null;
+              matchedDelta = historyDeltaMap.get(closestTimestamp) || null;
+            }
+          }
+          
+          orderbookRatios.push(matchedImbalance !== null ? matchedImbalance : NaN);
+          orderbookDeltas.push(matchedDelta !== null ? matchedDelta : NaN);
+        }
+        
+        // Fetch and save current orderbook snapshot
+        const latestPrice = candles[candles.length - 1].close;
+        const orderbook = await fetchOrderbookDepth(config.yahooSymbol);
+        if (orderbook) {
+          await saveOrderbookSnapshot(config.yahooSymbol, orderbook, latestPrice, depthPct);
+          // Update latest ratio and delta with current snapshot
+          const currentImbalance = calculateOrderbookImbalance(orderbook, latestPrice, depthPct);
+          if (currentImbalance && orderbookRatios.length > 0) {
+            orderbookRatios[orderbookRatios.length - 1] = currentImbalance.ratio;
+            if (orderbookDeltas.length > 0) {
+              orderbookDeltas[orderbookDeltas.length - 1] = currentImbalance.delta || 0;
+            }
+          }
+        }
+        
+        // Calculate MA of ratios
+        const validRatios = orderbookRatios.map(r => isNaN(r) ? 0 : r);
+        const maRatios = calculateSMA(validRatios, maPeriod);
+        
+        // Calculate oscillator: ratio - maRatio
+        // Buy signal threshold: Oscillator > 0.1 (strong buying pressure)
+        // Sell signal threshold: Oscillator < -0.1 (strong selling pressure)
+        const buyThreshold = 0.1; // Can be adjusted
+        const sellThreshold = -0.1;
+        
+        for (let i = 0; i < candles.length; i++) {
+          const ratio = orderbookRatios[i];
+          const ma = maRatios[i] || 0;
+          
+          if (!isNaN(ratio)) {
+            const oscillator = ratio - ma;
+            orderbookMaRatios.push(ma);
+            orderbookOscillators.push(oscillator);
+          } else {
+            orderbookMaRatios.push(NaN);
+            orderbookOscillators.push(NaN);
+          }
+        }
+        
+        const validCount = orderbookRatios.filter(r => !isNaN(r)).length;
+        console.log(`   ✅ Indicator 4 calculated: ${validCount}/${candles.length} data points, Latest Ratio=${orderbookRatios[orderbookRatios.length - 1]?.toFixed(4) || 'N/A'}`);
+      } catch (error: any) {
+        console.warn(`   ⚠️ Failed to load orderbook history for ${config.yahooSymbol}:`, error.message);
+        // Fallback to NaN
+        for (let i = 0; i < candles.length; i++) {
+          orderbookRatios.push(NaN);
+          orderbookDeltas.push(NaN);
+          orderbookMaRatios.push(NaN);
+          orderbookOscillators.push(NaN);
+        }
+      }
+    } else {
+      // For daily/weekly, only use current snapshot (no historical data)
+      let currentOrderbookData: { ratio: number; bidVol: number; askVol: number; totalVol: number } | null = null;
+      try {
+        const latestPrice = candles[candles.length - 1].close;
+        const orderbook = await fetchOrderbookDepth(config.yahooSymbol);
+        if (orderbook) {
+          const imbalance = calculateOrderbookImbalance(orderbook, latestPrice, depthPct);
+          if (imbalance) {
+            currentOrderbookData = {
+              ratio: imbalance.ratio,
+              bidVol: imbalance.bidVol,
+              askVol: imbalance.askVol,
+              totalVol: imbalance.totalVol,
+            };
+          }
+        }
+      } catch (error: any) {
+        console.warn(`   ⚠️ Failed to fetch orderbook data for ${config.yahooSymbol}:`, error.message);
+      }
+      
+      // Only latest candle has data
+      for (let i = 0; i < candles.length; i++) {
+        if (i === candles.length - 1 && currentOrderbookData) {
+          orderbookRatios.push(currentOrderbookData.ratio);
+          orderbookMaRatios.push(currentOrderbookData.ratio); // MA = ratio for single point
+          orderbookOscillators.push(0); // Oscillator = 0 for single point
+        } else {
+          orderbookRatios.push(NaN);
+          orderbookMaRatios.push(NaN);
+          orderbookOscillators.push(NaN);
+        }
+      }
+    }
+  } else {
+    // Not a crypto asset
+    for (let i = 0; i < candles.length; i++) {
+      orderbookRatios.push(NaN);
+      orderbookDeltas.push(NaN);
+      orderbookMaRatios.push(NaN);
+      orderbookOscillators.push(NaN);
+    }
+    if (!isCrypto) {
+      console.log(`   ⚠️ Indicator 4: Not available for non-crypto assets (${config.category})`);
+    }
+  }
+
+  // --- Indicator 5: Triple Lines Supertrend ---
+  console.log(`   Calculating Indicator 5 (Triple Lines Supertrend)...`);
+  
+  // Parameters (from Pine Script)
+  const atrPeriod = 10;
+  const multiplier1 = 3.0;
+  const multiplier2 = 3.6;
+  const multiplier3 = 4.3;
+  const changeATR = true; // Use standard ATR calculation
+  
+  // Calculate hl2 (source)
+  const hl2 = candles.map(c => (c.high + c.low) / 2);
+  
+  // Calculate three Supertrend lines
+  const [trend1, st1] = calculateSupertrend(highs, lows, closes, multiplier1, atrPeriod, hl2, changeATR);
+  const [trend2, st2] = calculateSupertrend(highs, lows, closes, multiplier2, atrPeriod, hl2, changeATR);
+  const [trend3, st3] = calculateSupertrend(highs, lows, closes, multiplier3, atrPeriod, hl2, changeATR);
+  
+  console.log(`   ✅ Indicator 5 calculated: ST1=${st1[st1.length - 1]?.toFixed(2)}, ST2=${st2[st2.length - 1]?.toFixed(2)}, ST3=${st3[st3.length - 1]?.toFixed(2)}`);
+
   // 3. Combine Data Frame
   const indicators: IndicatorData[] = candles.map((c, i) => {
     // Safety check for array bounds
@@ -1242,6 +1449,37 @@ export const analyzeAsset = async (assetId: string, timeframe: '1D' | '1W' = '1D
       isImminentBreakout: isImminentBreakouts[i] || false,
       isBreakoutUp: isBreakoutUps[i] || false,
       isBreakoutDown: isBreakoutDowns[i] || false,
+      // Indicator 4: SCF Orderbook Imbalance
+      orderbookImbalance: isCrypto ? (orderbookRatios[i] ?? undefined) : undefined,
+      orderbookDelta: isCrypto ? (isNaN(orderbookDeltas[i]) ? 0 : orderbookDeltas[i]) : 0,
+      orderbookMaRatio: isCrypto ? (orderbookMaRatios[i] ?? undefined) : undefined,
+      orderbookOscillator: isCrypto ? (orderbookOscillators[i] ?? undefined) : undefined,
+      orderbookBaseline: isCrypto ? 0 : undefined,
+      hasOrderbookData: isCrypto && !isNaN(orderbookRatios[i]),
+      // Indicator 4 Buy/Sell Signals
+      // Buy signal (抄底信号): Oscillator > 0.1 (strong buying pressure, positive delta)
+      // Sell signal: Oscillator < -0.1 (strong selling pressure, negative delta)
+      isOversold4: isCrypto && typeof orderbookOscillators[i] === 'number' && !isNaN(orderbookOscillators[i]) 
+        ? orderbookOscillators[i] > 0.1 
+        : false,
+      isOverbought4: isCrypto && typeof orderbookOscillators[i] === 'number' && !isNaN(orderbookOscillators[i]) 
+        ? orderbookOscillators[i] < -0.1 
+        : false,
+      // Indicator 5: Triple Lines Supertrend
+      supertrend1: !isNaN(st1[i]) ? st1[i] : undefined,
+      supertrend2: !isNaN(st2[i]) ? st2[i] : undefined,
+      supertrend3: !isNaN(st3[i]) ? st3[i] : undefined,
+      supertrendTrend1: !isNaN(trend1[i]) ? (trend1[i] === 1 ? 1 : -1) : undefined,
+      supertrendTrend2: !isNaN(trend2[i]) ? (trend2[i] === 1 ? 1 : -1) : undefined,
+      supertrendTrend3: !isNaN(trend3[i]) ? (trend3[i] === 1 ? 1 : -1) : undefined,
+      // Check if price is touching any Supertrend line (within 0.5% tolerance)
+      supertrendTouching1: !isNaN(st1[i]) ? Math.abs(c.close - st1[i]) / c.close <= 0.005 : false,
+      supertrendTouching2: !isNaN(st2[i]) ? Math.abs(c.close - st2[i]) / c.close <= 0.005 : false,
+      supertrendTouching3: !isNaN(st3[i]) ? Math.abs(c.close - st3[i]) / c.close <= 0.005 : false,
+      // Alert level: 3 (most important) if touching ST3, 2 if touching ST2, 1 if touching ST1, 0 if none
+      supertrendAlertLevel: !isNaN(st3[i]) && Math.abs(c.close - st3[i]) / c.close <= 0.005 ? 3 :
+                           !isNaN(st2[i]) && Math.abs(c.close - st2[i]) / c.close <= 0.005 ? 2 :
+                           !isNaN(st1[i]) && Math.abs(c.close - st1[i]) / c.close <= 0.005 ? 1 : 0,
     };
   });
 

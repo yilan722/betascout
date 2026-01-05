@@ -70,6 +70,29 @@ export interface IndicatorData {
   isImminentBreakout: boolean; // Breakout is imminent (energy >= 80 && quality >= 70)
   isBreakoutUp: boolean; // Bullish breakout confirmed
   isBreakoutDown: boolean; // Bearish breakout confirmed
+  
+  // Indicator 4: SCF Orderbook Imbalance (Only available for crypto assets)
+  orderbookImbalance?: number; // (bidVol - askVol) / totalVol, range: -1 to 1 (Ratio)
+  orderbookDelta?: number; // bidVol - askVol in USD (Delta, like CoinGlass)
+  orderbookMaRatio?: number; // MA of imbalance ratio
+  orderbookOscillator?: number; // ratioSeries - maRatio (the diffSeries)
+  orderbookBaseline?: number; // Always 0
+  hasOrderbookData?: boolean; // Whether orderbook data is available for this asset
+  // Indicator 4 Buy/Sell Signals
+  isOversold4?: boolean; // Buy signal: Oscillator > 0.1 (strong buying pressure, positive delta)
+  isOverbought4?: boolean; // Sell signal: Oscillator < -0.1 (strong selling pressure, negative delta)
+  
+  // Indicator 5: Triple Lines Supertrend
+  supertrend1?: number; // Supertrend 1 value (ATR Period=10, Multiplier=3.0)
+  supertrend2?: number; // Supertrend 2 value (ATR Period=10, Multiplier=3.6)
+  supertrend3?: number; // Supertrend 3 value (ATR Period=10, Multiplier=4.3)
+  supertrendTrend1?: 1 | -1; // Trend direction for ST1: 1=up, -1=down
+  supertrendTrend2?: 1 | -1; // Trend direction for ST2: 1=up, -1=down
+  supertrendTrend3?: 1 | -1; // Trend direction for ST3: 1=up, -1=down
+  supertrendAlertLevel?: 0 | 1 | 2 | 3; // Alert level: 0=none, 1=touched ST1, 2=touched ST2, 3=touched ST3 (most important)
+  supertrendTouching1?: boolean; // Price touching ST1
+  supertrendTouching2?: boolean; // Price touching ST2
+  supertrendTouching3?: boolean; // Price touching ST3
 }
 
-export type Timeframe = '1D' | '1W';
+export type Timeframe = '1D' | '1W' | '15m' | '1m';

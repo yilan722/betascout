@@ -138,3 +138,84 @@ export const calculateATR = (high: number[], low: number[], close: number[], win
   }
   return atr;
 };
+
+// Supertrend calculation (based on Pine Script)
+// Returns [trend[], supertrend[]] where trend is 1 (up) or -1 (down)
+export const calculateSupertrend = (
+  high: number[],
+  low: number[],
+  close: number[],
+  multiplier: number,
+  periods: number,
+  src: number[], // Source (hl2)
+  useATR: boolean = true // changeATR parameter
+): [number[], number[]] => {
+  const n = close.length;
+  const trends: number[] = [];
+  const supertrends: number[] = [];
+  
+  // Calculate ATR or SMA of TR
+  const atr = useATR 
+    ? calculateATR(high, low, close, periods)
+    : calculateSMA(
+        high.map((h, i) => i === 0 ? h - low[i] : Math.max(h - low[i], Math.abs(h - close[i - 1]), Math.abs(low[i] - close[i - 1]))),
+        periods
+      );
+  
+  // Initialize arrays
+  const up: number[] = [];
+  const dn: number[] = [];
+  
+  for (let i = 0; i < n; i++) {
+    if (isNaN(atr[i]) || atr[i] <= 0) {
+      trends.push(NaN);
+      supertrends.push(NaN);
+      up.push(NaN);
+      dn.push(NaN);
+      continue;
+    }
+    
+    // Calculate basic bands
+    const currentUp = src[i] - (multiplier * atr[i]);
+    const currentDn = src[i] + (multiplier * atr[i]);
+    
+    // Get previous values (nz function: use current if previous is NaN)
+    const prevUp = i > 0 && !isNaN(up[i - 1]) ? up[i - 1] : currentUp;
+    const prevDn = i > 0 && !isNaN(dn[i - 1]) ? dn[i - 1] : currentDn;
+    
+    // Adjust bands based on previous close
+    let adjustedUp = currentUp;
+    let adjustedDn = currentDn;
+    
+    if (i > 0 && !isNaN(close[i - 1])) {
+      if (close[i - 1] > prevUp) {
+        adjustedUp = Math.max(currentUp, prevUp);
+      }
+      if (close[i - 1] < prevDn) {
+        adjustedDn = Math.min(currentDn, prevDn);
+      }
+    }
+    
+    up.push(adjustedUp);
+    dn.push(adjustedDn);
+    
+    // Determine trend
+    let trend = 1; // Default to up
+    if (i > 0 && !isNaN(trends[i - 1])) {
+      trend = trends[i - 1];
+    }
+    
+    // Trend reversal logic (check current bar's close price)
+    // Pine Script: trend := trend == -1 and close > dn1 ? 1 : trend == 1 and close < up1 ? -1 : trend
+    if (trend === -1 && close[i] > prevDn) {
+      trend = 1;
+    } else if (trend === 1 && close[i] < prevUp) {
+      trend = -1;
+    }
+    
+    trends.push(trend);
+    supertrends.push(trend === 1 ? adjustedUp : adjustedDn);
+  }
+  
+  return [trends, supertrends];
+};

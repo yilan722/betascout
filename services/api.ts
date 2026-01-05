@@ -122,8 +122,13 @@ export const testBinanceConnection = async (): Promise<{ success: boolean; messa
 };
 
 // Fetch from Binance API (for crypto)
-const fetchFromBinance = async (symbol: string, interval: '1d' | '1w' = '1d'): Promise<Candle[]> => {
+const fetchFromBinance = async (symbol: string, interval: '1d' | '1w' | '15m' | '1m' = '1d'): Promise<Candle[]> => {
   try {
+    // Skip USDT-USD (stablecoin, no USDT/USDT trading pair exists)
+    if (symbol === 'USDT-USD' || symbol === 'USDTUSDT') {
+      throw new Error('USDT-USD is a stablecoin and does not have a trading pair on Binance');
+    }
+    
     // Convert Yahoo Finance crypto format to Binance format
     // BTC-USD -> BTCUSDT, ETH-USD -> ETHUSDT, etc.
     let binanceSymbol = symbol.replace('-USD', 'USDT').toUpperCase();
@@ -141,10 +146,45 @@ const fetchFromBinance = async (symbol: string, interval: '1d' | '1w' = '1d'): P
     console.log(`🔄 Attempting to fetch ${symbol} from Binance as ${binanceSymbol} (${interval})...`);
     
     // Binance API: Get klines (candles)
-    // For daily: 730 days (2 years), for weekly: 500 weeks (~9.6 years) to ensure enough data for indicators
-    const limit = interval === '1w' ? 500 : 730;
+    // For daily: 730 days (2 years), for weekly: 500 weeks (~9.6 years)
+    // For 15m: 1000 candles (~10.4 days), for 1m: 1000 candles (~16.7 hours)
+    const limit = interval === '1w' ? 500 : 
+                  interval === '15m' ? 1000 :
+                  interval === '1m' ? 1000 : 730;
     const url = `${BINANCE_BASE}/klines?symbol=${binanceSymbol}&interval=${interval}&limit=${limit}`;
-    const response = await fetch(url);
+    
+    // Try direct fetch first (Binance API should work without CORS proxy)
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+        // Add timeout
+        signal: AbortSignal.timeout(10000), // 10 second timeout
+      });
+    } catch (fetchError: any) {
+      // If direct fetch fails (CORS or network), try with CORS proxy
+      if (fetchError.name === 'AbortError' || fetchError.message?.includes('Failed to fetch')) {
+        console.warn(`⚠️ Direct Binance fetch failed, trying with CORS proxy...`, fetchError.message);
+        try {
+          // Use CORS proxy as fallback
+          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+          response = await fetch(proxyUrl, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+            },
+            signal: AbortSignal.timeout(15000), // 15 second timeout for proxy
+          });
+        } catch (proxyError: any) {
+          throw new Error(`Network error: ${fetchError.message}. Please check your internet connection.`);
+        }
+      } else {
+        throw fetchError;
+      }
+    }
     
     if (!response.ok) {
       throw new Error(`Binance API HTTP error: ${response.status}`);
@@ -177,8 +217,14 @@ const fetchFromBinance = async (symbol: string, interval: '1d' | '1w' = '1d'): P
         
         if (!close || close === 0 || isNaN(close)) return null;
         
+        // For intraday intervals (15m, 1m), include time in ISO format
+        // For daily/weekly, use date only
+        const timeStr = (interval === '15m' || interval === '1m')
+          ? new Date(openTime).toISOString()
+          : new Date(openTime).toISOString().split('T')[0];
+        
         return {
-          time: new Date(openTime).toISOString().split('T')[0],
+          time: timeStr,
           open: open || close,
           high: high || close,
           low: low || close,
@@ -256,10 +302,31 @@ const fetchFromAlphaVantage = async (symbol: string): Promise<Candle[]> => {
   }
 };
 
-export const fetchCandles = async (symbol: string, timeframe: '1D' | '1W' = '1D'): Promise<Candle[]> => {
+export const fetchCandles = async (symbol: string, timeframe: '1D' | '1W' | '15m' | '1m' = '1D'): Promise<Candle[]> => {
   // Map timeframe to API intervals
-  const interval = timeframe === '1W' ? '1w' : '1d';
-  const yahooInterval = timeframe === '1W' ? '1wk' : '1d';
+  const interval = timeframe === '1W' ? '1w' : 
+                   timeframe === '15m' ? '15m' :
+                   timeframe === '1m' ? '1m' : '1d';
+  const yahooInterval = timeframe === '1W' ? '1wk' : 
+                        timeframe === '15m' ? '15m' :
+                        timeframe === '1m' ? '1m' : '1d';
+  
+  // For intraday intervals, only use Binance (Yahoo Finance doesn't support these well)
+  if (timeframe === '15m' || timeframe === '1m') {
+    const isCrypto = symbol.includes('-USD') || symbol.includes('USDT');
+    if (isCrypto) {
+      try {
+        const candles = await fetchFromBinance(symbol, interval);
+        if (candles.length > 0) {
+          return candles;
+        }
+      } catch (error: any) {
+        throw new Error(`Failed to fetch ${timeframe} data for ${symbol}: ${error.message}`);
+      }
+    } else {
+      throw new Error(`${timeframe} timeframe is only available for crypto assets`);
+    }
+  }
   
   // Strategy 1: For crypto, try Binance API first (free, reliable, no CORS issues)
   const isCrypto = symbol.includes('-USD') || symbol.includes('USDT');
@@ -348,4 +415,169 @@ export const fetchCandles = async (symbol: string, timeframe: '1D' | '1W' = '1D'
 
   // If all strategies fail, throw error (don't return empty array)
   throw new Error(`Failed to fetch data for ${symbol} using all available methods. Please check your internet connection or try again later.`);
+};
+
+// Orderbook data interface
+export interface OrderbookSnapshot {
+  bids: Array<[string, string]>; // [price, quantity]
+  asks: Array<[string, string]>; // [price, quantity]
+  timestamp: number;
+}
+
+// Fetch orderbook depth from Binance
+// Note: Orderbook data is real-time only, historical snapshots are not available via public API
+export const fetchOrderbookDepth = async (
+  symbol: string, 
+  limit: number = 100
+): Promise<OrderbookSnapshot | null> => {
+  try {
+    // Skip USDT-USD (stablecoin, no USDT/USDT trading pair exists)
+    if (symbol === 'USDT-USD' || symbol === 'USDTUSDT') {
+      console.log(`⚠️ Skipping orderbook fetch for ${symbol} (stablecoin, no trading pair)`);
+      return null;
+    }
+    
+    // Convert Yahoo Finance crypto format to Binance format
+    // BTC-USD -> BTCUSDT, ETH-USD -> ETHUSDT, etc.
+    let binanceSymbol = symbol.replace('-USD', 'USDT').toUpperCase();
+    
+    // Handle special cases
+    const symbolMap: Record<string, string> = {
+      'PEPE-USD': 'PEPEUSDT',
+      // Add more mappings if needed
+    };
+    
+    if (symbolMap[symbol]) {
+      binanceSymbol = symbolMap[symbol];
+    }
+    
+    // Check if it's a crypto symbol
+    if (!symbol.includes('-USD') && !symbol.includes('USDT')) {
+      // Not a crypto symbol, orderbook not available
+      return null;
+    }
+    
+    console.log(`🔄 Fetching orderbook depth for ${symbol} (${binanceSymbol})...`);
+    
+    // Binance API: Get orderbook depth
+    // limit: 5, 10, 20, 50, 100, 500, 1000, 5000
+    const url = `${BINANCE_BASE}/depth?symbol=${binanceSymbol}&limit=${limit}`;
+    
+    // Try direct fetch first, fallback to CORS proxy if needed
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(5000), // 5 second timeout for orderbook
+      });
+    } catch (fetchError: any) {
+      if (fetchError.name === 'AbortError' || fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('CORS')) {
+        console.warn(`⚠️ Direct orderbook fetch failed, trying with CORS proxy...`);
+        // Try multiple CORS proxy options
+        const proxyOptions = [
+          `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+          `https://corsproxy.io/?${encodeURIComponent(url)}`,
+        ];
+        
+        let lastError = fetchError;
+        let proxySuccess = false;
+        for (const proxyUrl of proxyOptions) {
+          try {
+            const proxyResponse = await fetch(proxyUrl, {
+              method: 'GET',
+              headers: {
+                'Accept': 'application/json',
+              },
+              signal: AbortSignal.timeout(10000),
+            });
+            if (proxyResponse.ok) {
+              response = proxyResponse;
+              proxySuccess = true;
+              break; // Success, exit loop
+            }
+          } catch (proxyError: any) {
+            lastError = proxyError;
+            continue; // Try next proxy
+          }
+        }
+        
+        // If all proxies failed, throw the last error
+        if (!proxySuccess) {
+          throw new Error(`Network error: ${lastError.message || 'All CORS proxies failed'}`);
+        }
+      } else {
+        throw fetchError;
+      }
+    }
+    
+    if (!response.ok) {
+      throw new Error(`Binance API HTTP error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Check for Binance API error response
+    if (data.code && data.code !== 0) {
+      throw new Error(`Binance API error: ${data.msg || 'Service unavailable'}`);
+    }
+    
+    // Binance returns: { lastUpdateId, bids: [[price, quantity], ...], asks: [[price, quantity], ...] }
+    if (!data.bids || !data.asks || !Array.isArray(data.bids) || !Array.isArray(data.asks)) {
+      throw new Error(`Binance API returned invalid format`);
+    }
+    
+    return {
+      bids: data.bids,
+      asks: data.asks,
+      timestamp: Date.now(),
+    };
+  } catch (error: any) {
+    console.error(`❌ Binance orderbook fetch failed for ${symbol}:`, error);
+    return null;
+  }
+};
+
+// Calculate orderbook imbalance ratio
+// depthPct: percentage depth from current price (e.g., 10% means ±10% from current price)
+export const calculateOrderbookImbalance = (
+  orderbook: OrderbookSnapshot | null,
+  currentPrice: number,
+  depthPct: number = 10
+): { bidVol: number; askVol: number; totalVol: number; ratio: number } | null => {
+  if (!orderbook || !currentPrice || currentPrice <= 0) {
+    return null;
+  }
+  
+  const priceRange = currentPrice * (depthPct / 100);
+  const upperBound = currentPrice + priceRange;
+  const lowerBound = currentPrice - priceRange;
+  
+  // Sum bid volumes within depth range
+  let bidVol = 0;
+  for (const [priceStr, quantityStr] of orderbook.bids) {
+    const price = parseFloat(priceStr);
+    const quantity = parseFloat(quantityStr);
+    if (price >= lowerBound && price <= currentPrice) {
+      bidVol += quantity * price; // Volume in quote currency (USDT)
+    }
+  }
+  
+  // Sum ask volumes within depth range
+  let askVol = 0;
+  for (const [priceStr, quantityStr] of orderbook.asks) {
+    const price = parseFloat(priceStr);
+    const quantity = parseFloat(quantityStr);
+    if (price >= currentPrice && price <= upperBound) {
+      askVol += quantity * price; // Volume in quote currency (USDT)
+    }
+  }
+  
+  const totalVol = bidVol + askVol;
+  const ratio = totalVol > 0 ? (bidVol - askVol) / totalVol : 0;
+  const delta = bidVol - askVol; // Delta in USD (like CoinGlass)
+  
+  return { bidVol, askVol, totalVol, ratio, delta };
 };

@@ -94,6 +94,7 @@ export interface Translations {
     indicator1: string;
     indicator2: string;
     indicator3: string;
+    indicator5: string;
     dataPoints: string;
   };
 
@@ -106,6 +107,9 @@ export interface Translations {
     indicator3NewZone: string;
     indicator3Imminent: string;
     indicator3Breakout: string;
+    indicator5Alert1: string;
+    indicator5Alert2: string;
+    indicator5Alert3: string;
     disclaimer: string;
   };
 
@@ -207,6 +211,7 @@ export const translations: Record<Language, Translations> = {
       indicator1: 'Indicator 1 (RSI/EMA/ATR):',
       indicator2: 'Indicator 2 (Alpha Extract):',
       indicator3: 'Indicator 3 (Energy Reactor):',
+      indicator5: 'Indicator 5 (Triple Lines Supertrend):',
       dataPoints: 'Data Points:',
     },
     instructions: {
@@ -217,6 +222,9 @@ export const translations: Record<Language, Translations> = {
       indicator3NewZone: 'Indicator 3 (New Zone):',
       indicator3Imminent: 'Indicator 3 (Imminent Breakout):',
       indicator3Breakout: 'Indicator 3 (Breakout):',
+      indicator5Alert1: 'Indicator 5 (Alert Level 1):',
+      indicator5Alert2: 'Indicator 5 (Alert Level 2):',
+      indicator5Alert3: 'Indicator 5 (Alert Level 3):',
       disclaimer: 'Disclaimer: Market data provided by Yahoo Finance via proxy. Data may be delayed. Not for financial advice or real trading.',
     },
     status: {
@@ -312,6 +320,7 @@ export const translations: Record<Language, Translations> = {
       indicator1: '指标1 (RSI/EMA/ATR):',
       indicator2: '指标2 (Alpha提取):',
       indicator3: '指标3 (能量反应堆):',
+      indicator5: '指标5 (三重超级趋势):',
       dataPoints: '数据点:',
     },
     instructions: {
@@ -322,6 +331,9 @@ export const translations: Record<Language, Translations> = {
       indicator3NewZone: '指标3 (新区间):',
       indicator3Imminent: '指标3 (即将突破):',
       indicator3Breakout: '指标3 (突破):',
+      indicator5Alert1: '指标5 (1级预警):',
+      indicator5Alert2: '指标5 (2级预警):',
+      indicator5Alert3: '指标5 (3级预警):',
       disclaimer: '免责声明: 市场数据由Yahoo Finance通过代理提供。数据可能有延迟。不构成财务建议或实际交易建议。',
     },
     status: {
